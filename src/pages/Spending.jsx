@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const CATS=["Food","Travel","Shopping","Entertainment","Course","Electronics","Health","Utilities","Rent","Fuel","Other"];
@@ -12,33 +12,62 @@ function groupByDate(entries){const map={};entries.forEach(e=>{if(!map[e.date])m
 const card={background:"linear-gradient(145deg,#1A2333,#0F172A)",border:"1px solid rgba(255,255,255,0.06)",boxShadow:"0 10px 30px rgba(0,0,0,0.4)",borderRadius:"16px"};
 const inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",padding:"13px 16px",color:"#E5E7EB",fontSize:"14px",outline:"none",transition:"border-color .2s",fontFamily:"inherit",boxSizing:"border-box"};
 
+// ── AddPanel at TOP LEVEL — fixes the input focus bug ──────────
 function AddPanel({open,onClose,onSave}){
-  const[name,setName]=useState("");const[amount,setAmount]=useState("");
+  const[name,setName]=useState("");
+  const[amount,setAmount]=useState("");
   const[date,setDate]=useState(new Date().toISOString().split("T")[0]);
-  const[type,setType]=useState("Food");const[note,setNote]=useState("");
+  const[type,setType]=useState("Food");
+  const[note,setNote]=useState("");
   const[saving,setSaving]=useState(false);
-  useEffect(()=>{if(open){setName("");setAmount("");setNote("");setType("Food");}},[open]);
+
+  useEffect(()=>{
+    if(open){setName("");setAmount("");setNote("");setType("Food");setSaving(false);}
+  },[open]);
+
   async function save(){
     if(!name.trim()||!amount||!date)return alert("Fill all fields");
-    setSaving(true);await onSave({name:name.trim(),amount:parseFloat(amount),date,type,note:note.trim()});setSaving(false);onClose();
+    setSaving(true);
+    try{
+      await onSave({name:name.trim(),amount:parseFloat(amount),date,type,note:note.trim()});
+      onClose();
+    }catch(e){alert("Failed to save: "+e.message);}
+    setSaving(false);
   }
+
   return(<>
     {open&&<div className="fixed inset-0 bg-black/60 z-40" onClick={onClose}/>}
-    <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`} style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+    <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
+      style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)"}}>
       <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
       <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-        <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
+        <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px",fontFamily:"inherit"}}>←</button>
         <h3 className="font-bold text-white text-base">Add Spending</h3>
         <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold" style={{background:"rgba(248,113,113,0.15)",color:"#F87171",border:"1px solid rgba(248,113,113,0.2)"}}>Spent</span>
       </div>
       <div className="px-5 pt-4 pb-4 space-y-3">
-        {[["Date","date",date,setDate],["Amount (₹)","number",amount,setAmount],["Name","text",name,setName],["Note (optional)","text",note,setNote]].map(([lbl,tp,val,set])=>(
-          <div key={lbl}><label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>{lbl}</label>
-            <input type={tp} value={val} onChange={e=>set(e.target.value)} placeholder={lbl==="Amount (₹)"?"0.00":lbl==="Name"?"e.g. Zomato Dinner":lbl==="Note (optional)"?"Any note...":""} style={inp}
-              onFocus={e=>e.target.style.borderColor="#F87171"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
-          </div>
-        ))}
-        <div><label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Category</label>
+        <div>
+          <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Date</label>
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp}
+            onFocus={e=>e.target.style.borderColor="#F87171"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Amount (₹)</label>
+          <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" style={inp}
+            onFocus={e=>e.target.style.borderColor="#F87171"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Name</label>
+          <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Zomato Dinner" style={inp}
+            onFocus={e=>e.target.style.borderColor="#F87171"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Note (optional)</label>
+          <input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="Any note..." style={inp}
+            onFocus={e=>e.target.style.borderColor="#F87171"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Category</label>
           <select value={type} onChange={e=>setType(e.target.value)} style={{...inp,background:"#0F172A"}}>
             {CATS.map(t=><option key={t} style={{background:"#0F172A"}}>{t}</option>)}
           </select>
@@ -133,13 +162,24 @@ export default function Spending({firestoreData}){
   const year=new Date().getFullYear();
   const keys=buildKeys(year);
   const totalAll=spendings.reduce((s,e)=>s+e.amount,0);
-  async function handleAdd(entry){await addEntry("spendings",entry);setActiveMonth(mkey(entry.date));}
-  async function handleDelete(kind,id){await deleteEntry(kind,id);}
+
+  const handleAdd = useCallback(async(entry)=>{
+    await addEntry("spendings",entry);
+    setActiveMonth(mkey(entry.date));
+  },[addEntry]);
+
+  const handleDelete = useCallback(async(kind,id)=>{
+    await deleteEntry(kind,id);
+  },[deleteEntry]);
+
   if(loading)return(<div style={{paddingTop:"24px",display:"flex",flexDirection:"column",gap:"12px"}}>{[1,2,3].map(i=><div key={i} style={{...card,height:"80px",opacity:0.5}}/>)}</div>);
+
   return(<div style={{opacity:vis?1:0,transform:vis?"none":"translateY(10px)",transition:"all .35s ease"}}>
     {!activeMonth&&(<>
-      <div className="mb-4"><h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>Spending</h1>
-        <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>{year} · Total: <span style={{color:"#F87171",fontWeight:600}}>{fmt(totalAll)}</span></p></div>
+      <div className="mb-4">
+        <h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>Spending</h1>
+        <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>{year} · Total: <span style={{color:"#F87171",fontWeight:600}}>{fmt(totalAll)}</span></p>
+      </div>
       <div className="p-4 mb-5 flex justify-between items-center" style={{...card}}>
         <div><p className="text-xs uppercase tracking-wider font-mono mb-1" style={{color:"#6B7280"}}>Total Spent {year}</p><p className="text-2xl font-bold" style={{color:"#F87171"}}>{fmt(totalAll)}</p></div>
         <div className="text-right"><p className="text-xs uppercase tracking-wider font-mono mb-1" style={{color:"#6B7280"}}>Entries</p><p className="text-2xl font-bold" style={{color:"#E5E7EB"}}>{spendings.length}</p></div>
