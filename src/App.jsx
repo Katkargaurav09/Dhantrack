@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import AuthPage    from "./pages/AuthPage";
-import Home        from "./pages/Home";
-import Investments from "./pages/Investments";
-import Spending    from "./pages/Spending";
-import Balance     from "./pages/Balance";
+import AuthPage     from "./pages/AuthPage";
+import Home         from "./pages/Home";
+import Investments  from "./pages/Investments";
+import Spending     from "./pages/Spending";
+import Balance      from "./pages/Balance";
+import useAuth      from "./hooks/useAuth";
+import useFirestore from "./hooks/useFirestore";
 
 const NAV = [
   { id: "home",        label: "Overview",    icon: "🏠" },
@@ -12,13 +14,15 @@ const NAV = [
   { id: "balance",     label: "Balance",     icon: "⚖️" },
 ];
 
-// ── User Avatar + Dropdown ─────────────────────────────────────
+// ── User Avatar ────────────────────────────────────────────────
 function UserAvatar({ user, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
-    function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    function handle(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
@@ -29,8 +33,9 @@ function UserAvatar({ user, onLogout }) {
 
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
-      {/* Circle button */}
-      <button onClick={() => setOpen(o => !o)} title={user?.name}
+      <button
+        onClick={() => setOpen(o => !o)}
+        title={user?.name}
         style={{
           width: "36px", height: "36px", borderRadius: "50%",
           background: "linear-gradient(135deg, #34D399, #059669)",
@@ -42,11 +47,11 @@ function UserAvatar({ user, onLogout }) {
           transition: "all .2s",
         }}
         onMouseEnter={e => e.currentTarget.style.boxShadow = "0 0 0 3px rgba(52,211,153,0.2)"}
-        onMouseLeave={e => { if (!open) e.currentTarget.style.boxShadow = "none"; }}>
+        onMouseLeave={e => { if (!open) e.currentTarget.style.boxShadow = "none"; }}
+      >
         {initials}
       </button>
 
-      {/* Dropdown */}
       {open && (
         <div style={{
           position: "absolute", top: "calc(100% + 10px)", right: 0,
@@ -57,23 +62,23 @@ function UserAvatar({ user, onLogout }) {
           boxShadow: "0 15px 35px rgba(0,0,0,0.5)",
           zIndex: 200,
         }}>
-          {/* User info */}
           <div style={{ padding: "10px 12px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: "4px" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <div style={{ width:"30px",height:"30px",borderRadius:"50%",background:"linear-gradient(135deg,#34D399,#059669)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:"700",color:"#022C22",flexShrink:0 }}>
                 {initials}
               </div>
-              <div style={{ minWidth:0 }}>
+              <div style={{ minWidth: 0 }}>
                 <p style={{ color:"#E5E7EB",fontSize:"13px",fontWeight:"600",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user?.name}</p>
                 <p style={{ color:"#6B7280",fontSize:"11px",fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user?.email}</p>
               </div>
             </div>
           </div>
-          {/* Sign out */}
-          <button onClick={() => { setOpen(false); onLogout(); }}
+          <button
+            onClick={() => { setOpen(false); onLogout(); }}
             style={{ width:"100%",textAlign:"left",padding:"9px 12px",borderRadius:"8px",background:"none",border:"none",color:"#F87171",fontSize:"13px",fontWeight:"500",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"8px",transition:"background .15s" }}
-            onMouseEnter={e => e.currentTarget.style.background="rgba(248,113,113,0.1)"}
-            onMouseLeave={e => e.currentTarget.style.background="none"}>
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(248,113,113,0.1)"}
+            onMouseLeave={e => e.currentTarget.style.background = "none"}
+          >
             🚪 Sign out
           </button>
         </div>
@@ -82,15 +87,13 @@ function UserAvatar({ user, onLogout }) {
   );
 }
 
-// ─── DESKTOP HEADER ────────────────────────────────────────────
+// ── Desktop Header ─────────────────────────────────────────────
 function Header({ current, onChange, user, onLogout }) {
   const today = new Date().toLocaleDateString("en-IN", {
     weekday: "short", day: "numeric", month: "short", year: "numeric",
   });
-
   return (
     <header className="hidden lg:flex sticky top-0 z-40 items-center justify-between px-8 h-16 border-b border-white/10 bg-white/5 backdrop-blur-xl">
-      {/* Logo */}
       <div className="flex items-center gap-3 flex-shrink-0">
         <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
           <span className="text-emerald-400 text-sm font-bold">D</span>
@@ -101,7 +104,6 @@ function Header({ current, onChange, user, onLogout }) {
         </div>
       </div>
 
-      {/* Nav */}
       <nav className="flex items-center gap-1">
         {NAV.map(item => {
           const isActive = current === item.id;
@@ -114,13 +116,12 @@ function Header({ current, onChange, user, onLogout }) {
               }`}>
               <span className="text-base">{item.icon}</span>
               <span>{item.label}</span>
-              {isActive && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400"/>}
+              {isActive && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400" />}
             </button>
           );
         })}
       </nav>
 
-      {/* Right */}
       <div className="flex items-center gap-4 flex-shrink-0">
         <span className="text-xs font-mono text-white/30">{today}</span>
         <UserAvatar user={user} onLogout={onLogout} />
@@ -129,11 +130,10 @@ function Header({ current, onChange, user, onLogout }) {
   );
 }
 
-// ─── MOBILE TOPBAR ─────────────────────────────────────────────
+// ── Mobile Topbar ──────────────────────────────────────────────
 function MobileTopbar({ current, user, onLogout }) {
   const page  = NAV.find(n => n.id === current);
   const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-
   return (
     <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between px-5 h-14 border-b border-white/10 bg-white/5 backdrop-blur-xl">
       <div className="flex items-center gap-1">
@@ -152,7 +152,7 @@ function MobileTopbar({ current, user, onLogout }) {
   );
 }
 
-// ─── MOBILE BOTTOM NAV ─────────────────────────────────────────
+// ── Bottom Nav ─────────────────────────────────────────────────
 function BottomNav({ current, onChange }) {
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex bg-white/5 backdrop-blur-xl border-t border-white/10">
@@ -163,7 +163,7 @@ function BottomNav({ current, onChange }) {
             className={`flex-1 flex flex-col items-center gap-1 py-3 transition-colors relative ${
               isActive ? "text-emerald-400" : "text-white/25 hover:text-white/50"
             }`}>
-            {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-emerald-400 rounded-full"/>}
+            {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-emerald-400 rounded-full" />}
             <span className="text-lg leading-none">{item.icon}</span>
             <span className="text-[10px] font-mono">{item.label.slice(0, 7)}</span>
           </button>
@@ -173,46 +173,73 @@ function BottomNav({ current, onChange }) {
   );
 }
 
-// ─── APP ROOT ──────────────────────────────────────────────────
+// ── Loading Screen ─────────────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div style={{ minHeight:"100vh", background:"linear-gradient(135deg,#0B0F1A,#111827)", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:"16px" }}>
+      <div style={{ width:"44px",height:"44px",borderRadius:"12px",background:"linear-gradient(135deg,#34D399,#059669)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"18px",fontWeight:"bold",color:"#022C22" }}>D</div>
+      <p style={{ color:"#6B7280",fontSize:"13px",fontFamily:"monospace" }}>Loading DhanTrack...</p>
+    </div>
+  );
+}
+
+// ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState("home");
-  const [user, setUser] = useState(null);
 
+  // ── Real Firebase auth ──
+  const { user, loading, login, register, loginWithGoogle, logout } = useAuth();
+
+  // ── Real Firestore data — only when user is logged in ──
+  const firestoreData = useFirestore(user?.uid || null);
+
+  // Show loading while Firebase checks auth state on page load
+  if (loading) return <LoadingScreen />;
+
+  // ── Auth handlers ──────────────────────────────────────────
   async function handleLogin(email, password) {
-    // TODO: replace with → await signInWithEmailAndPassword(auth, email, password)
-    setUser({ name: "Katka User", email });
+    await login(email, password);
   }
 
   async function handleRegister(name, email, password) {
-    // TODO: replace with → await createUserWithEmailAndPassword(auth, email, password)
-    // then → await updateProfile(userCredential.user, { displayName: name })
-    setUser({ name, email });
+    await register(name, email, password);
   }
 
-  function handleLogout() {
-    // TODO: replace with → await signOut(auth)
-    setUser(null);
+  async function handleGoogle() {
+    await loginWithGoogle();
+  }
+
+  async function handleLogout() {
+    await logout();
     setPage("home");
   }
 
+  // Not logged in → show auth
   if (!user) {
-    return <AuthPage onLogin={handleLogin} onRegister={handleRegister} />;
+    return (
+      <AuthPage
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        onGoogle={handleGoogle}
+      />
+    );
   }
 
+  // Logged in → show app with real data
   function renderPage() {
     switch (page) {
-      case "home":        return <Home navigate={setPage} />;
-      case "investments": return <Investments />;
-      case "spending":    return <Spending />;
-      case "balance":     return <Balance />;
-      default:            return <Home navigate={setPage} />;
+      case "home":        return <Home        navigate={setPage}  firestoreData={firestoreData} user={user} />;
+      case "investments": return <Investments                     firestoreData={firestoreData} user={user} />;
+      case "spending":    return <Spending                        firestoreData={firestoreData} user={user} />;
+      case "balance":     return <Balance                         firestoreData={firestoreData} user={user} />;
+      default:            return <Home        navigate={setPage}  firestoreData={firestoreData} user={user} />;
     }
   }
 
   return (
     <div className="min-h-screen text-white bg-gradient-to-br from-[#0B0F1A] via-[#0F172A] to-[#020617]">
-      <Header current={page} onChange={setPage} user={user} onLogout={handleLogout} />
-      <MobileTopbar current={page} user={user} onLogout={handleLogout} />
+      <Header      current={page} onChange={setPage} user={user} onLogout={handleLogout} />
+      <MobileTopbar current={page}                   user={user} onLogout={handleLogout} />
       <main className="max-w-3xl mx-auto px-4 pb-24 lg:pb-10 pt-2">
         {renderPage()}
       </main>

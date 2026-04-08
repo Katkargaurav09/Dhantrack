@@ -1,30 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  collection,
-  addDoc,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  orderBy,
-  serverTimestamp,
+  collection, addDoc, deleteDoc, doc,
+  onSnapshot, query, orderBy, serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
-
-// ── useFirestore ───────────────────────────────────────────────
-// Usage in any page:
-//   const { investments, spendings, addEntry, deleteEntry, loading } = useFirestore(uid);
-//
-// Data is stored per user:
-//   users/{uid}/investments/{docId}
-//   users/{uid}/spendings/{docId}
 
 export default function useFirestore(uid) {
   const [investments, setInvestments] = useState([]);
   const [spendings,   setSpendings]   = useState([]);
   const [loading,     setLoading]     = useState(true);
 
-  // ── Real-time listener — Investments ───────────────────────
+  // ── Real-time investments listener ────────────────────────
   useEffect(() => {
     if (!uid) { setLoading(false); return; }
 
@@ -33,18 +19,20 @@ export default function useFirestore(uid) {
       orderBy("date", "desc")
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      setInvestments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    }, (err) => {
-      console.error("Investments fetch error:", err);
-      setLoading(false);
-    });
-
+    const unsub = onSnapshot(q,
+      snap => {
+        setInvestments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      },
+      err => {
+        console.error("Investments error:", err.message);
+        setLoading(false);
+      }
+    );
     return () => unsub();
   }, [uid]);
 
-  // ── Real-time listener — Spendings ─────────────────────────
+  // ── Real-time spendings listener ──────────────────────────
   useEffect(() => {
     if (!uid) return;
 
@@ -53,38 +41,38 @@ export default function useFirestore(uid) {
       orderBy("date", "desc")
     );
 
-    const unsub = onSnapshot(q, (snap) => {
-      setSpendings(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => {
-      console.error("Spendings fetch error:", err);
-    });
-
+    const unsub = onSnapshot(q,
+      snap => setSpendings(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error("Spendings error:", err.message)
+    );
     return () => unsub();
   }, [uid]);
 
-  // ── Add entry ───────────────────────────────────────────────
+  // ── addEntry — useCallback so reference is always stable ──
   // kind = "investments" | "spendings"
-  async function addEntry(kind, entry) {
-    if (!uid) return;
+  const addEntry = useCallback(async (kind, entry) => {
+    if (!uid) throw new Error("Not logged in");
+    if (!entry.name || !entry.amount || !entry.date) throw new Error("Missing fields");
+
     await addDoc(collection(db, "users", uid, kind), {
       name:      entry.name,
-      amount:    entry.amount,
+      amount:    Number(entry.amount),
       date:      entry.date,
-      type:      entry.type,
+      type:      entry.type || "Other",
       note:      entry.note || "",
       createdAt: serverTimestamp(),
     });
-  }
+  }, [uid]);
 
-  // ── Delete entry ────────────────────────────────────────────
-  async function deleteEntry(kind, id) {
-    if (!uid) return;
+  // ── deleteEntry — useCallback so reference is always stable
+  const deleteEntry = useCallback(async (kind, id) => {
+    if (!uid) throw new Error("Not logged in");
     await deleteDoc(doc(db, "users", uid, kind, id));
-  }
+  }, [uid]);
 
-  // ── Computed totals ─────────────────────────────────────────
-  const totalInvested = investments.reduce((s, e) => s + e.amount, 0);
-  const totalSpent    = spendings.reduce((s, e) => s + e.amount, 0);
+  // ── Computed totals ───────────────────────────────────────
+  const totalInvested = investments.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const totalSpent    = spendings.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const netBalance    = totalInvested - totalSpent;
 
   return {

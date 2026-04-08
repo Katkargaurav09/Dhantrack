@@ -1,35 +1,20 @@
 import { useState } from "react";
 
-// ─────────────────────────────────────────────────────────────
-// KEY FIX for input focus bug:
-// Form and AccentPanel are NOT defined as sub-components inside
-// this file. They are plain JSX variables (accentJSX, formJSX).
-// Defining them as components causes React to remount them on
-// every keystroke, which resets focus. JSX variables don't remount.
-// ─────────────────────────────────────────────────────────────
-
 const inp = {
-  width: "100%",
-  background: "rgba(255,255,255,0.05)",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: "12px",
-  padding: "14px 16px",
-  color: "#E5E7EB",
-  fontSize: "14px",
-  outline: "none",
-  transition: "border-color .2s",
-  fontFamily: "inherit",
-  boxSizing: "border-box",
+  width: "100%", background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px",
+  padding: "14px 16px", color: "#E5E7EB", fontSize: "14px",
+  outline: "none", transition: "border-color .2s",
+  fontFamily: "inherit", boxSizing: "border-box",
 };
 
 function EyeBtn({ show, onToggle }) {
   return (
     <button type="button" onClick={onToggle} style={{
-      position: "absolute", right: "14px", top: "50%",
-      transform: "translateY(-50%)", background: "none",
-      border: "none", cursor: "pointer", padding: 0,
+      position:"absolute", right:"14px", top:"50%", transform:"translateY(-50%)",
+      background:"none", border:"none", cursor:"pointer", padding:0,
       color: show ? "#34D399" : "#6B7280",
-      display: "flex", alignItems: "center",
+      display:"flex", alignItems:"center",
     }}>
       {show ? (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -45,16 +30,27 @@ function EyeBtn({ show, onToggle }) {
   );
 }
 
+function cleanError(err) {
+  const msg = err?.message || "Something went wrong.";
+  if (msg.includes("user-not-found") || msg.includes("wrong-password") || msg.includes("invalid-credential")) return "Invalid email or password.";
+  if (msg.includes("email-already-in-use")) return "This email is already registered.";
+  if (msg.includes("weak-password"))        return "Password is too weak.";
+  if (msg.includes("invalid-email"))        return "Please enter a valid email.";
+  if (msg.includes("popup-closed"))         return "Google sign-in was cancelled.";
+  if (msg.includes("network-request-failed")) return "Network error. Check your connection.";
+  return msg.replace("Firebase: ", "").replace(/\(auth\/.*?\)/g, "").trim();
+}
+
 export default function AuthPage({ onLogin, onRegister, onGoogle }) {
-  const [mode,       setMode]       = useState("login");
-  const [name,       setName]       = useState("");
-  const [email,      setEmail]      = useState("");
-  const [pass,       setPass]       = useState("");
-  const [confirm,    setConfirm]    = useState("");
-  const [showPass,   setShowPass]   = useState(false);
-  const [showConf,   setShowConf]   = useState(false);
-  const [error,      setError]      = useState("");
-  const [loading,    setLoading]    = useState(false);
+  const [mode,     setMode]     = useState("login");
+  const [name,     setName]     = useState("");
+  const [email,    setEmail]    = useState("");
+  const [pass,     setPass]     = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [showConf, setShowConf] = useState(false);
+  const [error,    setError]    = useState("");
+  const [loading,  setLoading]  = useState(false);
 
   const isLogin = mode === "login";
 
@@ -62,18 +58,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
     setMode(m); setError("");
     setName(""); setEmail(""); setPass(""); setConfirm("");
     setShowPass(false); setShowConf(false);
-  }
-
-  function cleanFirebaseError(err) {
-    const msg = err?.message || "Something went wrong.";
-    if (msg.includes("user-not-found") || msg.includes("wrong-password") || msg.includes("invalid-credential"))
-      return "Invalid email or password.";
-    if (msg.includes("email-already-in-use")) return "This email is already registered.";
-    if (msg.includes("weak-password"))        return "Password is too weak.";
-    if (msg.includes("invalid-email"))        return "Please enter a valid email.";
-    if (msg.includes("popup-closed"))         return "Google sign-in was cancelled.";
-    if (msg.includes("network-request-failed")) return "Network error. Check your connection.";
-    return msg.replace("Firebase: ", "").replace(/\(auth\/.*?\)/g, "").trim();
   }
 
   async function handleSubmit(e) {
@@ -86,25 +70,25 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
     try {
       if (isLogin) await onLogin(email.trim(), pass);
       else         await onRegister(name.trim(), email.trim(), pass);
-    } catch (err) { setError(cleanFirebaseError(err)); }
+    } catch (err) { setError(cleanError(err)); }
     setLoading(false);
   }
 
   async function handleGoogle() {
     setError(""); setLoading(true);
     try { await onGoogle(); }
-    catch (err) { setError(cleanFirebaseError(err)); }
+    catch (err) { setError(cleanError(err)); }
     setLoading(false);
   }
 
-  // ── accentJSX — plain variable, NOT a component ────────────
+  // ── accentJSX — JSX variable NOT a sub-component (fixes focus bug) ──
   const accentJSX = (
     <div style={{
-      flex: "0 0 50%", alignSelf: "stretch",
-      background: "linear-gradient(160deg, #064E3B 0%, #022C22 60%, #0B0F1A 100%)",
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-      padding: "48px 40px", position: "relative", overflow: "hidden",
+      width:"100%", height:"100%", minHeight:"320px",
+      background:"linear-gradient(160deg,#064E3B 0%,#022C22 60%,#0B0F1A 100%)",
+      display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center",
+      padding:"48px 40px", position:"relative", overflow:"hidden",
     }}>
       <div style={{position:"absolute",top:"-80px",right:"-80px",width:"280px",height:"280px",borderRadius:"50%",background:"radial-gradient(circle,rgba(52,211,153,0.25),transparent 70%)",pointerEvents:"none"}}/>
       <div style={{position:"absolute",bottom:"-60px",left:"-60px",width:"200px",height:"200px",borderRadius:"50%",background:"radial-gradient(circle,rgba(251,191,36,0.12),transparent 70%)",pointerEvents:"none"}}/>
@@ -116,18 +100,18 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
         <p style={{color:"rgba(52,211,153,0.8)",fontSize:"14px",lineHeight:"1.7",marginBottom:"32px"}}>
           {isLogin
             ?"Don't have an account yet? Join DhanTrack and start managing your finances smarter."
-            :"Already have an account? Sign in to continue tracking your investments and spending."}
+            :"Already have an account? Sign in to continue tracking your investments."}
         </p>
         <button onClick={()=>switchMode(isLogin?"register":"login")} style={{
-          padding:"12px 36px",background:"transparent",border:"2px solid #34D399",
-          borderRadius:"50px",color:"#34D399",fontWeight:"700",fontSize:"13px",
-          cursor:"pointer",letterSpacing:"0.1em",transition:"all .2s",fontFamily:"inherit",
+          padding:"12px 36px",background:"transparent",border:"2px solid #34D399",borderRadius:"50px",
+          color:"#34D399",fontWeight:"700",fontSize:"13px",cursor:"pointer",
+          letterSpacing:"0.1em",transition:"all .2s",fontFamily:"inherit",
         }}
           onMouseEnter={e=>{e.currentTarget.style.background="#34D399";e.currentTarget.style.color="#022C22";}}
           onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="#34D399";}}>
           {isLogin?"SIGN UP":"SIGN IN"}
         </button>
-        <div style={{marginTop:"36px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",textAlign:"left"}}>
+        <div style={{marginTop:"32px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",textAlign:"left"}}>
           {[{l:"Track Investments",i:"📈"},{l:"Monitor Spending",i:"💸"},{l:"Monthly Insights",i:"⚡"},{l:"Net Balance",i:"⚖️"}].map(f=>(
             <div key={f.l} style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.18)",borderRadius:"10px",padding:"10px 12px",display:"flex",alignItems:"center",gap:"8px"}}>
               <span style={{fontSize:"16px"}}>{f.i}</span>
@@ -139,13 +123,13 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
     </div>
   );
 
-  // ── formJSX — plain variable, NOT a component ──────────────
+  // ── formJSX — JSX variable NOT a sub-component (fixes focus bug) ──
   const formJSX = (
     <div style={{
-      flex:"0 0 50%",alignSelf:"stretch",
+      width:"100%", height:"100%",
       background:"linear-gradient(145deg,#1A2333,#0F172A)",
-      padding:"48px 44px",display:"flex",flexDirection:"column",
-      justifyContent:"center",boxSizing:"border-box",overflowY:"auto",
+      padding:"48px 44px", display:"flex", flexDirection:"column",
+      justifyContent:"center", boxSizing:"border-box", overflowY:"auto",
     }}>
       {/* Logo */}
       <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"32px"}}>
@@ -171,8 +155,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
       )}
 
       <form onSubmit={handleSubmit} style={{display:"flex",flexDirection:"column",gap:"14px"}}>
-
-        {/* Name */}
         {!isLogin&&(
           <div>
             <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Full Name</label>
@@ -183,7 +165,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
           </div>
         )}
 
-        {/* Email */}
         <div>
           <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Email Address</label>
           <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
@@ -192,7 +173,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
             onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
         </div>
 
-        {/* Password + eye */}
         <div>
           <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Password</label>
           <div style={{position:"relative"}}>
@@ -206,7 +186,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
           </div>
         </div>
 
-        {/* Confirm password + eye */}
         {!isLogin&&(
           <div>
             <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Confirm Password</label>
@@ -222,7 +201,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
           </div>
         )}
 
-        {/* Forgot password */}
         {isLogin&&(
           <div style={{textAlign:"right",marginTop:"-6px"}}>
             <button type="button" style={{color:"#FBBF24",fontSize:"12px",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:"500"}}>
@@ -231,7 +209,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
           </div>
         )}
 
-        {/* Submit */}
         <button type="submit" disabled={loading} style={{
           marginTop:"2px",padding:"15px",
           background:loading?"rgba(52,211,153,0.4)":"linear-gradient(135deg,#34D399,#059669)",
@@ -244,7 +221,6 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
           {loading?"Please wait...":isLogin?"SIGN IN":"CREATE ACCOUNT"}
         </button>
 
-        {/* Google — onGoogle prop wired up */}
         <button type="button" onClick={handleGoogle} disabled={loading} style={{
           padding:"14px",background:"rgba(255,255,255,0.04)",
           border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",
@@ -278,37 +254,56 @@ export default function AuthPage({ onLogin, onRegister, onGoogle }) {
   return (
     <>
       <style>{`
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         .auth-root {
           min-height: 100vh; width: 100%;
           background: linear-gradient(135deg, #0B0F1A 0%, #111827 100%);
-          display: flex; align-items: center; justify-content: center; padding: 20px;
+          display: flex; align-items: center; justify-content: center;
+          padding: 20px;
         }
         .auth-card {
           width: 100%; max-width: 920px;
-          display: flex; flex-direction: row;
           border-radius: 20px; overflow: hidden;
           box-shadow: 0 30px 70px rgba(0,0,0,0.7);
           border: 1px solid rgba(255,255,255,0.06);
+          /* Desktop: side by side */
+          display: flex; flex-direction: row;
+          /* KEY: min-height + stretch so both panels fill equally */
           min-height: 580px; align-items: stretch;
         }
+        .auth-left  { flex: 0 0 50%; display: flex; flex-direction: column; }
+        .auth-right { flex: 0 0 50%; display: flex; flex-direction: column; }
+
+        /* Mobile: stack vertically, green panel full width */
         @media (max-width: 700px) {
-          .auth-card { flex-direction: column; min-height: unset; }
-          .auth-accent { order: 1; }
-          .auth-form   { order: 2; }
+          .auth-card {
+            flex-direction: column;
+            min-height: unset;
+          }
+          .auth-left, .auth-right {
+            flex: unset !important;
+            width: 100% !important;
+          }
+          /* On mobile: accent always on top */
+          .accent-mobile-top  { order: -1; }
+          .accent-mobile-bottom { order: 1; }
+          .form-mobile { order: 0; }
         }
       `}</style>
+
       <div className="auth-root">
         <div className="auth-card">
           {isLogin ? (
+            /* Sign In: accent LEFT, form RIGHT */
             <>
-              <div className="auth-accent" style={{flex:"0 0 50%"}}>{accentJSX}</div>
-              <div className="auth-form"   style={{flex:"0 0 50%"}}>{formJSX}</div>
+              <div className={`auth-left accent-mobile-top`}>{accentJSX}</div>
+              <div className={`auth-right form-mobile`}>{formJSX}</div>
             </>
           ) : (
+            /* Sign Up: form LEFT, accent RIGHT */
             <>
-              <div className="auth-form"   style={{flex:"0 0 50%"}}>{formJSX}</div>
-              <div className="auth-accent" style={{flex:"0 0 50%"}}>{accentJSX}</div>
+              <div className={`auth-left form-mobile`}>{formJSX}</div>
+              <div className={`auth-right accent-mobile-bottom`}>{accentJSX}</div>
             </>
           )}
         </div>
