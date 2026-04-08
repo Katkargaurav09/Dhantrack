@@ -4,7 +4,7 @@ import Home         from "./pages/Home";
 import Investments  from "./pages/Investments";
 import Spending     from "./pages/Spending";
 import Balance      from "./pages/Balance";
-import useAuth      from "./hooks/Useauth;
+import useAuth      from "./hooks/Useauth";
 import useFirestore from "./hooks/Usefirestore";
 
 const NAV = [
