@@ -4,6 +4,7 @@ import Home         from "./pages/Home";
 import Investments  from "./pages/Investments";
 import Spending     from "./pages/Spending";
 import Balance      from "./pages/Balance";
+import Goals        from "./pages/Goals";
 import useAuth      from "./hooks/Useauth";
 import useFirestore from "./hooks/Usefirestore";
 
@@ -11,6 +12,7 @@ const NAV = [
   { id: "home",        label: "Overview",    icon: "🏠" },
   { id: "investments", label: "Investments", icon: "📈" },
   { id: "spending",    label: "Spending",    icon: "💸" },
+  { id: "goals",       label: "Goals",       icon: "🎯" },
   { id: "balance",     label: "Balance",     icon: "⚖️" },
 ];
 
@@ -33,52 +35,47 @@ function UserAvatar({ user, onLogout }) {
 
   return (
     <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        title={user?.name}
+      <button onClick={() => setOpen(o => !o)} title={user?.name}
         style={{
-          width: "36px", height: "36px", borderRadius: "50%",
-          background: "linear-gradient(135deg, #34D399, #059669)",
-          border: `2px solid ${open ? "rgba(52,211,153,0.6)" : "rgba(52,211,153,0.3)"}`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", fontFamily: "inherit",
-          fontSize: "12px", fontWeight: "700", color: "#022C22",
+          width:"36px", height:"36px", borderRadius:"50%",
+          background:"linear-gradient(135deg, #34D399, #059669)",
+          border:`2px solid ${open?"rgba(52,211,153,0.6)":"rgba(52,211,153,0.3)"}`,
+          display:"flex", alignItems:"center", justifyContent:"center",
+          cursor:"pointer", fontFamily:"inherit",
+          fontSize:"12px", fontWeight:"700", color:"#022C22",
           boxShadow: open ? "0 0 0 3px rgba(52,211,153,0.2)" : "none",
-          transition: "all .2s",
+          transition:"all .2s",
         }}
         onMouseEnter={e => e.currentTarget.style.boxShadow = "0 0 0 3px rgba(52,211,153,0.2)"}
-        onMouseLeave={e => { if (!open) e.currentTarget.style.boxShadow = "none"; }}
-      >
+        onMouseLeave={e => { if (!open) e.currentTarget.style.boxShadow = "none"; }}>
         {initials}
       </button>
 
       {open && (
         <div style={{
-          position: "absolute", top: "calc(100% + 10px)", right: 0,
-          background: "linear-gradient(145deg, #1A2333, #0F172A)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: "14px", padding: "6px",
-          minWidth: "200px",
-          boxShadow: "0 15px 35px rgba(0,0,0,0.5)",
-          zIndex: 200,
+          position:"absolute", top:"calc(100% + 10px)", right:0,
+          background:"linear-gradient(145deg, #1A2333, #0F172A)",
+          border:"1px solid rgba(255,255,255,0.08)",
+          borderRadius:"14px", padding:"6px",
+          minWidth:"200px",
+          boxShadow:"0 15px 35px rgba(0,0,0,0.5)",
+          zIndex:200,
         }}>
-          <div style={{ padding: "10px 12px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: "4px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ padding:"10px 12px 12px", borderBottom:"1px solid rgba(255,255,255,0.06)", marginBottom:"4px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
               <div style={{ width:"30px",height:"30px",borderRadius:"50%",background:"linear-gradient(135deg,#34D399,#059669)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:"700",color:"#022C22",flexShrink:0 }}>
                 {initials}
               </div>
-              <div style={{ minWidth: 0 }}>
+              <div style={{ minWidth:0 }}>
                 <p style={{ color:"#E5E7EB",fontSize:"13px",fontWeight:"600",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user?.name}</p>
                 <p style={{ color:"#6B7280",fontSize:"11px",fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{user?.email}</p>
               </div>
             </div>
           </div>
-          <button
-            onClick={() => { setOpen(false); onLogout(); }}
+          <button onClick={() => { setOpen(false); onLogout(); }}
             style={{ width:"100%",textAlign:"left",padding:"9px 12px",borderRadius:"8px",background:"none",border:"none",color:"#F87171",fontSize:"13px",fontWeight:"500",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"8px",transition:"background .15s" }}
             onMouseEnter={e => e.currentTarget.style.background = "rgba(248,113,113,0.1)"}
-            onMouseLeave={e => e.currentTarget.style.background = "none"}
-          >
+            onMouseLeave={e => e.currentTarget.style.background = "none"}>
             🚪 Sign out
           </button>
         </div>
@@ -90,7 +87,7 @@ function UserAvatar({ user, onLogout }) {
 // ── Desktop Header ─────────────────────────────────────────────
 function Header({ current, onChange, user, onLogout }) {
   const today = new Date().toLocaleDateString("en-IN", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
+    weekday:"short", day:"numeric", month:"short", year:"numeric",
   });
   return (
     <header className="hidden lg:flex sticky top-0 z-40 items-center justify-between px-8 h-16 border-b border-white/10 bg-white/5 backdrop-blur-xl">
@@ -116,7 +113,7 @@ function Header({ current, onChange, user, onLogout }) {
               }`}>
               <span className="text-base">{item.icon}</span>
               <span>{item.label}</span>
-              {isActive && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400" />}
+              {isActive && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400"/>}
             </button>
           );
         })}
@@ -124,7 +121,7 @@ function Header({ current, onChange, user, onLogout }) {
 
       <div className="flex items-center gap-4 flex-shrink-0">
         <span className="text-xs font-mono text-white/30">{today}</span>
-        <UserAvatar user={user} onLogout={onLogout} />
+        <UserAvatar user={user} onLogout={onLogout}/>
       </div>
     </header>
   );
@@ -133,7 +130,7 @@ function Header({ current, onChange, user, onLogout }) {
 // ── Mobile Topbar ──────────────────────────────────────────────
 function MobileTopbar({ current, user, onLogout }) {
   const page  = NAV.find(n => n.id === current);
-  const today = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const today = new Date().toLocaleDateString("en-IN", { day:"numeric", month:"short" });
   return (
     <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between px-5 h-14 border-b border-white/10 bg-white/5 backdrop-blur-xl">
       <div className="flex items-center gap-1">
@@ -146,7 +143,7 @@ function MobileTopbar({ current, user, onLogout }) {
       </div>
       <div className="flex items-center gap-3">
         <span className="text-xs font-mono text-white/30 hidden sm:block">{today}</span>
-        <UserAvatar user={user} onLogout={onLogout} />
+        <UserAvatar user={user} onLogout={onLogout}/>
       </div>
     </header>
   );
@@ -163,9 +160,9 @@ function BottomNav({ current, onChange }) {
             className={`flex-1 flex flex-col items-center gap-1 py-3 transition-colors relative ${
               isActive ? "text-emerald-400" : "text-white/25 hover:text-white/50"
             }`}>
-            {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-emerald-400 rounded-full" />}
+            {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-emerald-400 rounded-full"/>}
             <span className="text-lg leading-none">{item.icon}</span>
-            <span className="text-[10px] font-mono">{item.label.slice(0, 7)}</span>
+            <span className="text-[10px] font-mono">{item.label.slice(0,6)}</span>
           </button>
         );
       })}
@@ -186,64 +183,39 @@ function LoadingScreen() {
 // ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState("home");
-
-  // ── Real Firebase auth ──
   const { user, loading, login, register, loginWithGoogle, logout } = useAuth();
-
-  // ── Real Firestore data — only when user is logged in ──
   const firestoreData = useFirestore(user?.uid || null);
 
-  // Show loading while Firebase checks auth state on page load
-  if (loading) return <LoadingScreen />;
+  if (loading) return <LoadingScreen/>;
 
-  // ── Auth handlers ──────────────────────────────────────────
-  async function handleLogin(email, password) {
-    await login(email, password);
-  }
+  async function handleLogin(email, password) { await login(email, password); }
+  async function handleRegister(name, email, password) { await register(name, email, password); }
+  async function handleGoogle() { await loginWithGoogle(); }
+  async function handleLogout() { await logout(); setPage("home"); }
 
-  async function handleRegister(name, email, password) {
-    await register(name, email, password);
-  }
-
-  async function handleGoogle() {
-    await loginWithGoogle();
-  }
-
-  async function handleLogout() {
-    await logout();
-    setPage("home");
-  }
-
-  // Not logged in → show auth
   if (!user) {
-    return (
-      <AuthPage
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-        onGoogle={handleGoogle}
-      />
-    );
+    return <AuthPage onLogin={handleLogin} onRegister={handleRegister} onGoogle={handleGoogle}/>;
   }
 
-  // Logged in → show app with real data
   function renderPage() {
     switch (page) {
-      case "home":        return <Home        navigate={setPage}  firestoreData={firestoreData} user={user} />;
-      case "investments": return <Investments                     firestoreData={firestoreData} user={user} />;
-      case "spending":    return <Spending                        firestoreData={firestoreData} user={user} />;
-      case "balance":     return <Balance                         firestoreData={firestoreData} user={user} />;
-      default:            return <Home        navigate={setPage}  firestoreData={firestoreData} user={user} />;
+      case "home":        return <Home        navigate={setPage} firestoreData={firestoreData} user={user}/>;
+      case "investments": return <Investments                    firestoreData={firestoreData} user={user}/>;
+      case "spending":    return <Spending                       firestoreData={firestoreData} user={user}/>;
+      case "goals":       return <Goals                          firestoreData={firestoreData} user={user}/>;
+      case "balance":     return <Balance                        firestoreData={firestoreData} user={user}/>;
+      default:            return <Home        navigate={setPage} firestoreData={firestoreData} user={user}/>;
     }
   }
 
   return (
     <div className="min-h-screen text-white bg-gradient-to-br from-[#0B0F1A] via-[#0F172A] to-[#020617]">
-      <Header      current={page} onChange={setPage} user={user} onLogout={handleLogout} />
-      <MobileTopbar current={page}                   user={user} onLogout={handleLogout} />
+      <Header       current={page} onChange={setPage} user={user} onLogout={handleLogout}/>
+      <MobileTopbar current={page}                   user={user} onLogout={handleLogout}/>
       <main className="max-w-3xl mx-auto px-4 pb-24 lg:pb-10 pt-2">
         {renderPage()}
       </main>
-      <BottomNav current={page} onChange={setPage} />
+      <BottomNav current={page} onChange={setPage}/>
     </div>
   );
 }

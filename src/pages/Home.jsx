@@ -11,24 +11,60 @@ function timeAgo(dateStr) {
 const TYPE_ICON = { Stock:"📊",Crypto:"₿","Mutual Fund":"💼",Gold:"🥇","FD/RD":"🏦",Food:"🍔",Travel:"✈️",Shopping:"🛍️",Entertainment:"🎬",Course:"📚",Electronics:"💻",Health:"💊",Utilities:"⚡",Rent:"🏠",Fuel:"⛽",ETF:"📉",Other:"💡" };
 const card = { background:"linear-gradient(145deg, #1A2333, #0F172A)", border:"1px solid rgba(255,255,255,0.06)", boxShadow:"0 10px 30px rgba(0,0,0,0.4)", borderRadius:"16px" };
 
+// ── Compute streak from entries ────────────────────────────────
+function computeStreak(investments, spendings) {
+  const allDates = new Set([
+    ...investments.map(e => e.date),
+    ...spendings.map(e => e.date),
+  ]);
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split("T")[0];
+    if (allDates.has(key)) streak++;
+    else if (i > 0) break;
+  }
+  return streak;
+}
+
+// ── Badges definition ─────────────────────────────────────────
+function getBadges(investments, spendings, totalInvested, netBalance, streak) {
+  const badges = [];
+  if (investments.length >= 1)   badges.push({ icon:"🌱", label:"First Investment", desc:"Added your first investment" });
+  if (investments.length >= 10)  badges.push({ icon:"📈", label:"Investment Pro", desc:"10+ investments tracked" });
+  if (totalInvested >= 10000)    badges.push({ icon:"💎", label:"Diamond Investor", desc:"Invested ₹10,000+" });
+  if (totalInvested >= 100000)   badges.push({ icon:"👑", label:"Investment King", desc:"Invested ₹1 Lakh+" });
+  if (spendings.length >= 1)     badges.push({ icon:"📝", label:"Expense Tracker", desc:"Started tracking spending" });
+  if (netBalance > 0)            badges.push({ icon:"🎯", label:"Smart Saver", desc:"Investments exceed spending" });
+  if (streak >= 3)               badges.push({ icon:"🔥", label:`${streak} Day Streak`, desc:"Consistent tracker!" });
+  if (streak >= 7)               badges.push({ icon:"⚡", label:"Week Warrior", desc:"7 days consistent entry" });
+  if (streak >= 30)              badges.push({ icon:"🏆", label:"Month Master", desc:"30 days consistent!" });
+  return badges;
+}
+
 export default function Home({ navigate, firestoreData, user }) {
   const [vis, setVis] = useState(false);
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
 
   const { investments=[], spendings=[], totalInvested=0, totalSpent=0, netBalance=0, loading=false } = firestoreData || {};
 
-  const now  = new Date();
-  const cm   = mkey(now.toISOString());
-  const pm   = mkey(new Date(now.getFullYear(), now.getMonth()-1, 1).toISOString());
-  const cs   = spendings.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
-  const ps   = spendings.filter(e=>mkey(e.date)===pm).reduce((s,e)=>s+e.amount,0);
-  const ci   = investments.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
-  const diff = cs - ps;
-  const pct  = ps > 0 ? Math.abs(Math.round((diff/ps)*100)) : 0;
+  const now     = new Date();
+  const cm      = mkey(now.toISOString());
+  const pm      = mkey(new Date(now.getFullYear(), now.getMonth()-1, 1).toISOString());
+  const cs      = spendings.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
+  const ps      = spendings.filter(e=>mkey(e.date)===pm).reduce((s,e)=>s+e.amount,0);
+  const ci      = investments.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
+  const diff    = cs - ps;
+  const pct     = ps > 0 ? Math.abs(Math.round((diff/ps)*100)) : 0;
   const dayName = now.toLocaleDateString("en-IN",{weekday:"long"}).toUpperCase();
   const dateStr = now.toLocaleDateString("en-IN",{day:"numeric",month:"long"}).toUpperCase();
   const recent  = [...investments.map(e=>({...e,kind:"invest"})),...spendings.map(e=>({...e,kind:"spend"}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
   const isPos   = netBalance >= 0;
+
+  const streak  = computeStreak(investments, spendings);
+  const badges  = getBadges(investments, spendings, totalInvested, netBalance, streak);
 
   if (loading) return (
     <div style={{paddingTop:"24px",display:"flex",flexDirection:"column",gap:"12px"}}>
@@ -38,12 +74,16 @@ export default function Home({ navigate, firestoreData, user }) {
 
   return (
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(14px)",transition:"all .4s ease"}}>
+
+      {/* ── GREETING ── */}
       <div className="mb-6">
         <p className="text-xs font-mono tracking-widest mb-1" style={{color:"#6B7280"}}>{dayName}, {dateStr}</p>
-        <h1 className="text-2xl font-bold" style={{color:"#E5E7EB"}}>Welcome back, {user?.name?.split(" ")[0]||"there"} 👋</h1>
+        <h1 className="text-2xl font-bold" style={{color:"#E5E7EB"}}>
+          Welcome back, {user?.name?.split(" ")[0]||"there"} 👋
+        </h1>
       </div>
 
-      {/* Balance hero */}
+      {/* ── BALANCE HERO ── */}
       <div className="p-6 mb-4 relative overflow-hidden" style={{...card}}>
         <div style={{position:"absolute",top:"-50px",right:"-50px",width:"180px",height:"180px",borderRadius:"50%",background:isPos?"radial-gradient(circle,rgba(52,211,153,0.12),transparent 70%)":"radial-gradient(circle,rgba(248,113,113,0.12),transparent 70%)",pointerEvents:"none"}}/>
         <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>Available Balance</p>
@@ -63,7 +103,7 @@ export default function Home({ navigate, firestoreData, user }) {
         </div>
       </div>
 
-      {/* Stat cards */}
+      {/* ── STAT CARDS ── */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         {[
           {label:"Total Invested",val:totalInvested,color:"#34D399",glow:"rgba(52,211,153,0.15)",icon:"📈",page:"investments",count:investments.length},
@@ -80,7 +120,39 @@ export default function Home({ navigate, firestoreData, user }) {
         ))}
       </div>
 
-      {/* Quick status */}
+      {/* ── STREAK + BADGES ── */}
+      <div className="p-5 mb-4" style={{...card}}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🔥</span>
+            <p className="text-sm font-bold" style={{color:"#E5E7EB"}}>Streak & Badges</p>
+          </div>
+          {/* Streak counter */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)"}}>
+            <span style={{fontSize:"16px"}}>🔥</span>
+            <span style={{color:"#FBBF24",fontWeight:"700",fontSize:"14px"}}>{streak} day{streak!==1?"s":""}</span>
+          </div>
+        </div>
+
+        {badges.length === 0 ? (
+          <div className="text-center py-4" style={{color:"#4B5563"}}>
+            <p style={{fontSize:"28px",marginBottom:"6px"}}>🏅</p>
+            <p style={{fontSize:"13px"}}>Add entries daily to earn badges!</p>
+          </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:"10px"}}>
+            {badges.map(b=>(
+              <div key={b.label} className="rounded-xl p-3 text-center" style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)"}}>
+                <div style={{fontSize:"24px",marginBottom:"4px"}}>{b.icon}</div>
+                <p style={{color:"#E5E7EB",fontSize:"11px",fontWeight:"700",marginBottom:"2px"}}>{b.label}</p>
+                <p style={{color:"#4B5563",fontSize:"10px"}}>{b.desc}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── MONTHLY QUICK STATUS ── */}
       <div className="p-5 mb-4" style={{...card}}>
         <div className="flex items-center gap-2 mb-3">
           <span className="text-base">⚡</span>
@@ -89,15 +161,15 @@ export default function Home({ navigate, firestoreData, user }) {
         <p className="text-sm leading-relaxed" style={{color:"#9CA3AF"}}>
           {cs===0&&ci===0
             ? "No activity this month yet. Tap + to add your first entry!"
-            : <>You Spend{" "}<span style={{color:"#F87171",fontWeight:600}}>{fmt(cs)}</span>{" "}In This Month Spending{" "}
-                {ps>0&&<>{diff>0?"Increase":"Decrease"} By{" "}<span style={{color:diff>0?"#F87171":"#34D399",fontWeight:600}}>{fmt(Math.abs(diff))}</span>{" "}<span style={{color:"#FBBF24",fontWeight:600}}>({pct}%)</span> By Last Month.</>}
-                {ci>0&&<>{" "}You invested{" "}<span style={{color:"#34D399",fontWeight:600}}>{fmt(ci)}</span> this month.</>}
+            : <>You Spend{" "}<span style={{color:"#F87171",fontWeight:600}}>{fmt(cs)}</span>{" "}In This Month.{" "}
+                {ps>0&&<>{diff>0?"Increase":"Decrease"} By{" "}<span style={{color:diff>0?"#F87171":"#34D399",fontWeight:600}}>{fmt(Math.abs(diff))}</span>{" "}<span style={{color:"#FBBF24",fontWeight:600}}>({pct}%)</span> vs Last Month. </>}
+                {ci>0&&<>Invested{" "}<span style={{color:"#34D399",fontWeight:600}}>{fmt(ci)}</span> this month.</>}
               </>
           }
         </p>
       </div>
 
-      {/* Recent activity */}
+      {/* ── RECENT ACTIVITY ── */}
       <div className="overflow-hidden" style={{...card}}>
         <div className="flex items-center justify-between px-5 py-4" style={{borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
           <div className="flex items-center gap-2">
