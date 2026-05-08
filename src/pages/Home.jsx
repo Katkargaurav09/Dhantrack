@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { db } from "../firebase/config";
+import { collection, onSnapshot } from "firebase/firestore";
 
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
 function mkey(d) { const dt = new Date(d); return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0"); }
@@ -8,20 +10,23 @@ function timeAgo(dateStr) {
   if (diff === 1) return "Yesterday";
   return diff + " days ago";
 }
+
+function getDaysUntilRenewal(sub) {
+  const today   = new Date(); today.setHours(0,0,0,0);
+  const renewal = new Date(sub.nextRenewal); renewal.setHours(0,0,0,0);
+  return Math.ceil((renewal - today) / 86400000);
+}
+
 const TYPE_ICON = { Stock:"📊",Crypto:"₿","Mutual Fund":"💼",Gold:"🥇","FD/RD":"🏦",Food:"🍔",Travel:"✈️",Shopping:"🛍️",Entertainment:"🎬",Course:"📚",Electronics:"💻",Health:"💊",Utilities:"⚡",Rent:"🏠",Fuel:"⛽",ETF:"📉",Other:"💡" };
 const card = { background:"linear-gradient(145deg, #1A2333, #0F172A)", border:"1px solid rgba(255,255,255,0.06)", boxShadow:"0 10px 30px rgba(0,0,0,0.4)", borderRadius:"16px" };
 
-// ── Compute streak from entries ────────────────────────────────
+// ── Streak compute ────────────────────────────────────────────
 function computeStreak(investments, spendings) {
-  const allDates = new Set([
-    ...investments.map(e => e.date),
-    ...spendings.map(e => e.date),
-  ]);
+  const allDates = new Set([...investments.map(e=>e.date),...spendings.map(e=>e.date)]);
   let streak = 0;
   const today = new Date();
   for (let i = 0; i < 365; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
+    const d = new Date(today); d.setDate(d.getDate()-i);
     const key = d.toISOString().split("T")[0];
     if (allDates.has(key)) streak++;
     else if (i > 0) break;
@@ -29,24 +34,39 @@ function computeStreak(investments, spendings) {
   return streak;
 }
 
-// ── Badges definition ─────────────────────────────────────────
+// ── Badges ────────────────────────────────────────────────────
 function getBadges(investments, spendings, totalInvested, netBalance, streak) {
   const badges = [];
-  if (investments.length >= 1)   badges.push({ icon:"🌱", label:"First Investment", desc:"Added your first investment" });
-  if (investments.length >= 10)  badges.push({ icon:"📈", label:"Investment Pro", desc:"10+ investments tracked" });
-  if (totalInvested >= 10000)    badges.push({ icon:"💎", label:"Diamond Investor", desc:"Invested ₹10,000+" });
-  if (totalInvested >= 100000)   badges.push({ icon:"👑", label:"Investment King", desc:"Invested ₹1 Lakh+" });
-  if (spendings.length >= 1)     badges.push({ icon:"📝", label:"Expense Tracker", desc:"Started tracking spending" });
-  if (netBalance > 0)            badges.push({ icon:"🎯", label:"Smart Saver", desc:"Investments exceed spending" });
-  if (streak >= 3)               badges.push({ icon:"🔥", label:`${streak} Day Streak`, desc:"Consistent tracker!" });
-  if (streak >= 7)               badges.push({ icon:"⚡", label:"Week Warrior", desc:"7 days consistent entry" });
-  if (streak >= 30)              badges.push({ icon:"🏆", label:"Month Master", desc:"30 days consistent!" });
+  if (investments.length >= 1)  badges.push({ icon:"🌱", label:"First Investment", desc:"Added your first investment" });
+  if (investments.length >= 10) badges.push({ icon:"📈", label:"Investment Pro",   desc:"10+ investments tracked" });
+  if (totalInvested >= 10000)   badges.push({ icon:"💎", label:"Diamond Investor", desc:"Invested ₹10,000+" });
+  if (totalInvested >= 100000)  badges.push({ icon:"👑", label:"Investment King",  desc:"Invested ₹1 Lakh+" });
+  if (spendings.length >= 1)    badges.push({ icon:"📝", label:"Expense Tracker",  desc:"Started tracking spending" });
+  if (netBalance > 0)           badges.push({ icon:"🎯", label:"Smart Saver",      desc:"Investments exceed spending" });
+  if (streak >= 3)              badges.push({ icon:"🔥", label:`${streak} Day Streak`, desc:"Consistent tracker!" });
+  if (streak >= 7)              badges.push({ icon:"⚡", label:"Week Warrior",     desc:"7 days consistent" });
+  if (streak >= 30)             badges.push({ icon:"🏆", label:"Month Master",     desc:"30 days consistent!" });
   return badges;
 }
 
 export default function Home({ navigate, firestoreData, user }) {
-  const [vis, setVis] = useState(false);
+  const [vis,         setVis]         = useState(false);
+  const [autopayList, setAutopayList] = useState([]);
+  const [dismissed,   setDismissed]   = useState(new Set()); // dismissed reminder IDs
+
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
+
+  const uid = user?.uid;
+
+  // ── Fetch autopay subscriptions for reminders ──
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(collection(db, "users", uid, "autopay"),
+      snap => setAutopayList(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error(err)
+    );
+    return () => unsub();
+  }, [uid]);
 
   const { investments=[], spendings=[], totalInvested=0, totalSpent=0, netBalance=0, loading=false } = firestoreData || {};
 
@@ -62,9 +82,16 @@ export default function Home({ navigate, firestoreData, user }) {
   const dateStr = now.toLocaleDateString("en-IN",{day:"numeric",month:"long"}).toUpperCase();
   const recent  = [...investments.map(e=>({...e,kind:"invest"})),...spendings.map(e=>({...e,kind:"spend"}))].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
   const isPos   = netBalance >= 0;
-
   const streak  = computeStreak(investments, spendings);
   const badges  = getBadges(investments, spendings, totalInvested, netBalance, streak);
+
+  // ── Autopay reminders — due within 5 days ─────────────────
+  const reminders = autopayList.filter(sub => {
+    if (!sub.active) return false;
+    if (dismissed.has(sub.id)) return false;
+    const days = getDaysUntilRenewal(sub);
+    return days <= 5;
+  }).sort((a,b) => getDaysUntilRenewal(a) - getDaysUntilRenewal(b));
 
   if (loading) return (
     <div style={{paddingTop:"24px",display:"flex",flexDirection:"column",gap:"12px"}}>
@@ -74,6 +101,78 @@ export default function Home({ navigate, firestoreData, user }) {
 
   return (
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(14px)",transition:"all .4s ease"}}>
+
+      {/* ── AUTOPAY REMINDER BANNERS ── */}
+      {reminders.length > 0 && (
+        <div className="mb-5 space-y-2">
+          {reminders.map(sub => {
+            const days     = getDaysUntilRenewal(sub);
+            const isOverdue = days < 0;
+            const isToday   = days === 0;
+            const isUrgent  = days <= 2;
+            const bgColor   = isUrgent || isOverdue ? "rgba(248,113,113,0.1)"  : "rgba(251,191,36,0.08)";
+            const bdColor   = isUrgent || isOverdue ? "rgba(248,113,113,0.3)"  : "rgba(251,191,36,0.25)";
+            const txColor   = isUrgent || isOverdue ? "#F87171" : "#FBBF24";
+
+            return (
+              <div key={sub.id} style={{
+                background: bgColor,
+                border: `1px solid ${bdColor}`,
+                borderRadius: "14px",
+                padding: "12px 16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+              }}>
+                {/* Icon + pulse for urgent */}
+                <div style={{position:"relative",flexShrink:0}}>
+                  <span style={{fontSize:"26px"}}>{sub.icon}</span>
+                  {isUrgent && (
+                    <span style={{
+                      position:"absolute",top:"-3px",right:"-3px",
+                      width:"10px",height:"10px",borderRadius:"50%",
+                      background:"#F87171",
+                      boxShadow:"0 0 0 2px rgba(248,113,113,0.3)",
+                    }}/>
+                  )}
+                </div>
+
+                {/* Text */}
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{color:"#E5E7EB",fontSize:"13px",fontWeight:"700",marginBottom:"2px"}}>
+                    {isOverdue
+                      ? `⚠️ ${sub.name} was due ${Math.abs(days)} day${Math.abs(days)!==1?"s":""} ago!`
+                      : isToday
+                      ? `🔴 ${sub.name} renews TODAY!`
+                      : `🔔 ${sub.name} renews in ${days} day${days!==1?"s":""}!`
+                    }
+                  </p>
+                  <p style={{color:txColor,fontSize:"12px"}}>
+                    {fmt(sub.amount)} · {isOverdue || isToday
+                      ? "Cancel autopay now if not needed"
+                      : "Check if you still want this subscription"
+                    }
+                  </p>
+                </div>
+
+                {/* Go to autopay button */}
+                <div style={{display:"flex",flexDirection:"column",gap:"4px",flexShrink:0}}>
+                  <button
+                    onClick={() => navigate?.("autopay")}
+                    style={{padding:"5px 10px",background:isUrgent?"rgba(248,113,113,0.2)":"rgba(251,191,36,0.15)",border:`1px solid ${bdColor}`,borderRadius:"8px",color:txColor,fontSize:"11px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                    View →
+                  </button>
+                  <button
+                    onClick={() => setDismissed(prev => new Set([...prev, sub.id]))}
+                    style={{padding:"4px 10px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"8px",color:"#6B7280",fontSize:"10px",cursor:"pointer",fontFamily:"inherit"}}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── GREETING ── */}
       <div className="mb-6">
@@ -127,13 +226,11 @@ export default function Home({ navigate, firestoreData, user }) {
             <span className="text-base">🔥</span>
             <p className="text-sm font-bold" style={{color:"#E5E7EB"}}>Streak & Badges</p>
           </div>
-          {/* Streak counter */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl" style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)"}}>
             <span style={{fontSize:"16px"}}>🔥</span>
             <span style={{color:"#FBBF24",fontWeight:"700",fontSize:"14px"}}>{streak} day{streak!==1?"s":""}</span>
           </div>
         </div>
-
         {badges.length === 0 ? (
           <div className="text-center py-4" style={{color:"#4B5563"}}>
             <p style={{fontSize:"28px",marginBottom:"6px"}}>🏅</p>
@@ -161,7 +258,7 @@ export default function Home({ navigate, firestoreData, user }) {
         <p className="text-sm leading-relaxed" style={{color:"#9CA3AF"}}>
           {cs===0&&ci===0
             ? "No activity this month yet. Tap + to add your first entry!"
-            : <>You Spend{" "}<span style={{color:"#F87171",fontWeight:600}}>{fmt(cs)}</span>{" "}In This Month.{" "}
+            : <>You Spend{" "}<span style={{color:"#F87171",fontWeight:600}}>{fmt(cs)}</span>{" "}This Month.{" "}
                 {ps>0&&<>{diff>0?"Increase":"Decrease"} By{" "}<span style={{color:diff>0?"#F87171":"#34D399",fontWeight:600}}>{fmt(Math.abs(diff))}</span>{" "}<span style={{color:"#FBBF24",fontWeight:600}}>({pct}%)</span> vs Last Month. </>}
                 {ci>0&&<>Invested{" "}<span style={{color:"#34D399",fontWeight:600}}>{fmt(ci)}</span> this month.</>}
               </>
