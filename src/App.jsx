@@ -1,44 +1,37 @@
 import { useState, useRef, useEffect } from "react";
-import AuthPage     from "./pages/AuthPage";
-import Home         from "./pages/Home";
-import Investments  from "./pages/Investments";
-import Spending     from "./pages/Spending";
-import Autopay      from "./pages/Autopay";
-import Goals        from "./pages/Goals";
-import Balance      from "./pages/Balance";
-import useAuth      from "./hooks/Useauth";
-import useFirestore from "./hooks/Usefirestore";
+import AuthPage      from "./pages/AuthPage";
+import Home          from "./pages/Home";
+import Investments   from "./pages/Investments";
+import Spending      from "./pages/Spending";
+import Autopay       from "./pages/Autopay";
+import Goals         from "./pages/Goals";
+import Balance       from "./pages/Balance";
+import useAuth       from "./hooks/Useauth";
+import useFirestore  from "./hooks/Usefirestore";
+import QuickAddMenu  from "./components/QuickAddMenu";
 
 const NAV = [
-  { id: "home",        label: "Overview",    icon: "🏠" },
-  { id: "investments", label: "Investments", icon: "📈" },
-  { id: "spending",    label: "Spending",    icon: "💸" },
-  { id: "autopay",     label: "Autopay",     icon: "🔔" },
-  { id: "goals",       label: "Goals",       icon: "🎯" },
-  { id: "balance",     label: "Balance",     icon: "⚖️" },
+  { id: "home",        label: "Home",   fullLabel: "Overview",    icon: "🏠" },
+  { id: "investments", label: "Invest", fullLabel: "Investments", icon: "📈" },
+  { id: "spending",    label: "Spend",  fullLabel: "Spending",    icon: "💸" },
+  { id: "autopay",     label: "Bills",  fullLabel: "Autopay",     icon: "🔔" },
+  { id: "goals",       label: "Goals",  fullLabel: "Goals",       icon: "🎯" },
+  { id: "balance",     label: "Stats",  fullLabel: "Balance",     icon: "⚖️" },
 ];
 
-// ── User Avatar ────────────────────────────────────────────────
 function UserAvatar({ user, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
-
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
-
-  const initials = user?.name
-    ? user.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase()
-    : "U";
-
+  const initials = user?.name ? user.name.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase() : "U";
   return (
     <div ref={ref} style={{position:"relative",flexShrink:0}}>
       <button onClick={()=>setOpen(o=>!o)} title={user?.name}
-        style={{width:"36px",height:"36px",borderRadius:"50%",background:"linear-gradient(135deg,#34D399,#059669)",border:`2px solid ${open?"rgba(52,211,153,0.6)":"rgba(52,211,153,0.3)"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:"700",color:"#022C22",boxShadow:open?"0 0 0 3px rgba(52,211,153,0.2)":"none",transition:"all .2s"}}
-        onMouseEnter={e=>e.currentTarget.style.boxShadow="0 0 0 3px rgba(52,211,153,0.2)"}
-        onMouseLeave={e=>{if(!open)e.currentTarget.style.boxShadow="none";}}>
+        style={{width:"36px",height:"36px",borderRadius:"50%",background:"linear-gradient(135deg,#34D399,#059669)",border:`2px solid ${open?"rgba(52,211,153,0.6)":"rgba(52,211,153,0.3)"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:"700",color:"#022C22",boxShadow:open?"0 0 0 3px rgba(52,211,153,0.2)":"none",transition:"all .2s"}}>
         {initials}
       </button>
       {open&&(
@@ -53,9 +46,7 @@ function UserAvatar({ user, onLogout }) {
             </div>
           </div>
           <button onClick={()=>{setOpen(false);onLogout();}}
-            style={{width:"100%",textAlign:"left",padding:"9px 12px",borderRadius:"8px",background:"none",border:"none",color:"#F87171",fontSize:"13px",fontWeight:"500",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"8px",transition:"background .15s"}}
-            onMouseEnter={e=>e.currentTarget.style.background="rgba(248,113,113,0.1)"}
-            onMouseLeave={e=>e.currentTarget.style.background="none"}>
+            style={{width:"100%",textAlign:"left",padding:"9px 12px",borderRadius:"8px",background:"none",border:"none",color:"#F87171",fontSize:"13px",fontWeight:"500",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"8px"}}>
             🚪 Sign out
           </button>
         </div>
@@ -64,7 +55,6 @@ function UserAvatar({ user, onLogout }) {
   );
 }
 
-// ── Desktop Header ─────────────────────────────────────────────
 function Header({ current, onChange, user, onLogout }) {
   const today = new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
   return (
@@ -83,10 +73,9 @@ function Header({ current, onChange, user, onLogout }) {
           const isActive=current===item.id;
           return(
             <button key={item.id} onClick={()=>onChange(item.id)}
-              className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${isActive?"bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.2)]":"text-white/40 hover:text-white hover:bg-white/5"}`}>
+              className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${isActive?"bg-emerald-500/10 text-emerald-400 border border-emerald-500/20":"text-white/40 hover:text-white hover:bg-white/5"}`}>
               <span className="text-base">{item.icon}</span>
-              <span className="hidden xl:inline">{item.label}</span>
-              {isActive&&<span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-400"/>}
+              <span className="hidden xl:inline">{item.fullLabel}</span>
             </button>
           );
         })}
@@ -99,7 +88,6 @@ function Header({ current, onChange, user, onLogout }) {
   );
 }
 
-// ── Mobile Topbar ──────────────────────────────────────────────
 function MobileTopbar({ current, user, onLogout }) {
   const page  = NAV.find(n=>n.id===current);
   const today = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short"});
@@ -111,7 +99,7 @@ function MobileTopbar({ current, user, onLogout }) {
       </div>
       <div className="flex items-center gap-2">
         <span className="text-base">{page?.icon}</span>
-        <span className="text-sm font-medium text-white/70">{page?.label}</span>
+        <span className="text-sm font-medium text-white/70">{page?.fullLabel}</span>
       </div>
       <div className="flex items-center gap-3">
         <span className="text-xs font-mono text-white/30 hidden sm:block">{today}</span>
@@ -121,7 +109,6 @@ function MobileTopbar({ current, user, onLogout }) {
   );
 }
 
-// ── Bottom Nav ─────────────────────────────────────────────────
 function BottomNav({ current, onChange }) {
   return (
     <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex bg-white/5 backdrop-blur-xl border-t border-white/10">
@@ -129,10 +116,11 @@ function BottomNav({ current, onChange }) {
         const isActive=current===item.id;
         return(
           <button key={item.id} onClick={()=>onChange(item.id)}
-            className={`flex-1 flex flex-col items-center gap-1 py-3 transition-colors relative ${isActive?"text-emerald-400":"text-white/25 hover:text-white/50"}`}>
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors relative ${isActive?"text-emerald-400":"text-white/25 hover:text-white/50"}`}
+            style={{minWidth:0}}>
             {isActive&&<span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-emerald-400 rounded-full"/>}
             <span className="text-lg leading-none">{item.icon}</span>
-            <span className="text-[9px] font-mono">{item.label.slice(0,5)}</span>
+            <span style={{fontSize:"10px",fontWeight:"500"}}>{item.label}</span>
           </button>
         );
       })}
@@ -140,7 +128,6 @@ function BottomNav({ current, onChange }) {
   );
 }
 
-// ── Loading ────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#0B0F1A,#111827)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"16px"}}>
@@ -150,9 +137,11 @@ function LoadingScreen() {
   );
 }
 
-// ── App Root ───────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState("home");
+  // ✨ NEW: trigger to open add panel on target page
+  const [quickAddTrigger, setQuickAddTrigger] = useState(null);
+
   const { user, loading, login, register, loginWithGoogle, logout } = useAuth();
   const firestoreData = useFirestore(user?.uid || null);
 
@@ -167,14 +156,22 @@ export default function App() {
     return <AuthPage onLogin={handleLogin} onRegister={handleRegister} onGoogle={handleGoogle}/>;
   }
 
+  // ✨ NEW: handle universal quick-add
+  function handleQuickAdd(type) {
+    const pageMap = { investment: "investments", spending: "spending", autopay: "autopay" };
+    setPage(pageMap[type]);
+    // trigger uses a unique timestamp so child re-runs effect every time
+    setQuickAddTrigger({ type, ts: Date.now() });
+  }
+
   function renderPage() {
     switch (page) {
       case "home":        return <Home        navigate={setPage} firestoreData={firestoreData} user={user}/>;
-      case "investments": return <Investments                    firestoreData={firestoreData} user={user}/>;
-      case "spending":    return <Spending                       firestoreData={firestoreData} user={user}/>;
-      case "autopay":     return <Autopay                                                      user={user}/>;
-      case "goals":       return <Goals                          firestoreData={firestoreData} user={user}/>;
-      case "balance":     return <Balance                        firestoreData={firestoreData} user={user}/>;
+      case "investments": return <Investments firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
+      case "spending":    return <Spending    firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
+      case "autopay":     return <Autopay     user={user} quickAddTrigger={quickAddTrigger}/>;
+      case "goals":       return <Goals       firestoreData={firestoreData} user={user}/>;
+      case "balance":     return <Balance     firestoreData={firestoreData} user={user}/>;
       default:            return <Home        navigate={setPage} firestoreData={firestoreData} user={user}/>;
     }
   }
@@ -187,6 +184,7 @@ export default function App() {
         {renderPage()}
       </main>
       <BottomNav current={page} onChange={setPage}/>
+      <QuickAddMenu onAdd={handleQuickAdd}/>
     </div>
   );
 }

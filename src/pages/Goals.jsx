@@ -42,7 +42,7 @@ function AddBudgetPanel({ open, onClose, onSave }) {
           <div>
             <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Category</label>
             <select value={category} onChange={e=>setCategory(e.target.value)} style={{...inp,background:"#0F172A"}}>
-              {CATS.map(c=><option key={c} style={{background:"#0F172A"}}>{c}</option>)}
+              {CATS.map(c=><option key={c} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal",fontWeight:"normal"}}>{c}</option>)}
             </select>
           </div>
           <div>

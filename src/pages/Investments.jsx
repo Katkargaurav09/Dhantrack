@@ -1,34 +1,168 @@
 import { useState, useEffect, useCallback } from "react";
 import { db } from "../firebase/config";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, addDoc, deleteDoc } from "firebase/firestore";
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
-const TYPES=["Stock","Crypto","Mutual Fund","Gold","FD/RD","ETF","Other"];
+const DEFAULT_TYPES=["Stock","Crypto","Mutual Fund","Gold","FD/RD","ETF","Other"];
 const ICONS={Stock:"📊",Crypto:"₿","Mutual Fund":"💼",Gold:"🥇","FD/RD":"🏦",ETF:"📉",Other:"💡"};
 
 function fmt(n){return"₹"+Number(n).toLocaleString("en-IN",{maximumFractionDigits:0});}
 function mkey(d){const dt=new Date(d);return dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0");}
 function parseKey(mk){const[y,m]=mk.split("-");return{year:+y,month:+m};}
 function buildKeys(year){return Array.from({length:12},(_,i)=>year+"-"+String(i+1).padStart(2,"0"));}
-function fmtDate(s){const d=new Date(s);return`${String(d.getDate()).padStart(2,"0")} ${MONTHS[d.getMonth()].slice(0,3)} ${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
+function fmtDate(s){const d=new Date(s);return`${String(d.getDate()).padStart(2,"0")} ${MONTHS[d.getMonth()].slice(0,3)} ${d.getFullYear()}`;}
 function groupByDate(entries){const map={};entries.forEach(e=>{if(!map[e.date])map[e.date]=[];map[e.date].push(e);});return Object.entries(map).sort((a,b)=>new Date(b[0])-new Date(a[0]));}
 
 const card={background:"linear-gradient(145deg,#1A2333,#0F172A)",border:"1px solid rgba(255,255,255,0.06)",boxShadow:"0 10px 30px rgba(0,0,0,0.4)",borderRadius:"16px"};
 const inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",padding:"13px 16px",color:"#E5E7EB",fontSize:"14px",outline:"none",transition:"border-color .2s",fontFamily:"inherit",boxSizing:"border-box"};
+// ✨ NEW: Custom select with proper arrow
+const selectStyle = { ...inp, background:"#0F172A", appearance:"none", WebkitAppearance:"none", MozAppearance:"none", backgroundImage:"url(\"data:image/svg+xml;charset=US-ASCII,%3Csvg width='12' height='8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%236B7280' d='M6 8L0 0h12z'/%3E%3C/svg%3E\")", backgroundRepeat:"no-repeat", backgroundPosition:"right 16px center", paddingRight:"40px" };
 
-// ── Pencil Icon SVG ────────────────────────────────────────────
-function Pencil(){
-  return(
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-    </svg>
+function Pencil(){return(<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>);}
+
+// ── Manage Investment Types Panel ──────────────────────────────
+function ManageTypesPanel({ open, onClose, uid, customTypes }) {
+  const [newType,   setNewType]   = useState("");
+  const [newIcon,   setNewIcon]   = useState("💡");
+  const [editingId, setEditingId] = useState(null);
+  const [editName,  setEditName]  = useState("");
+  const [editIcon,  setEditIcon]  = useState("💡");
+  const [saving,    setSaving]    = useState(false);
+
+  const ICON_OPTIONS = ["💡","📊","₿","💼","🥇","🏦","📉","📈","💰","🏠","🌐","🎯","📦","🏛️"];
+
+  useEffect(() => { if (open) { setNewType(""); setNewIcon("💡"); setEditingId(null); } }, [open]);
+
+  async function addType() {
+    if (!newType.trim()) return alert("Enter type name");
+    if ([...DEFAULT_TYPES, ...customTypes.map(c=>c.name)].includes(newType.trim())) return alert("Type already exists");
+    setSaving(true);
+    try {
+      await addDoc(collection(db, "users", uid, "categories"), {
+        name: newType.trim(), icon: newIcon, createdAt: new Date().toISOString()
+      });
+      setNewType(""); setNewIcon("💡");
+    } catch(e) { alert(e.message); }
+    setSaving(false);
+  }
+
+  async function deleteType(id) {
+    if (!confirm("Delete this type? Existing entries will keep this type name.")) return;
+    await deleteDoc(doc(db, "users", uid, "categories", id));
+  }
+
+  function startEdit(t) { setEditingId(t.id); setEditName(t.name); setEditIcon(t.icon); }
+  function cancelEdit() { setEditingId(null); }
+
+  async function saveEdit() {
+    if (!editName.trim()) return;
+    try {
+      await updateDoc(doc(db, "users", uid, "categories", editingId), {
+        name: editName.trim(), icon: editIcon
+      });
+      setEditingId(null);
+    } catch(e) { alert(e.message); }
+  }
+
+  return (
+    <>
+      {open && <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose}/>}
+      <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
+        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"85vh",overflowY:"auto"}}>
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
+        <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+          <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
+          <h3 className="font-bold text-white text-base">📊 Manage Investment Types</h3>
+        </div>
+
+        <div className="px-5 pt-4 pb-2">
+          <p className="text-xs uppercase tracking-wider mb-3" style={{color:"#6B7280"}}>Add New Type</p>
+
+          <div className="mb-3">
+            <label className="text-xs block mb-2" style={{color:"#6B7280"}}>Pick an icon</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
+              {ICON_OPTIONS.map(ic=>(
+                <button key={ic} onClick={()=>setNewIcon(ic)}
+                  style={{fontSize:"20px",padding:"5px 8px",borderRadius:"8px",cursor:"pointer",fontFamily:"inherit",
+                    border:`1px solid ${newIcon===ic?"rgba(52,211,153,0.5)":"rgba(255,255,255,0.08)"}`,
+                    background:newIcon===ic?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)"}}>
+                  {ic}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2 mb-5">
+            <input type="text" value={newType} onChange={e=>setNewType(e.target.value)}
+              placeholder="Type name e.g. Real Estate, NPS..."
+              style={{...inp,flex:1}} onKeyDown={e=>e.key==="Enter"&&addType()}/>
+            <button onClick={addType} disabled={saving}
+              style={{padding:"0 18px",background:"linear-gradient(135deg,#34D399,#059669)",border:"none",borderRadius:"12px",color:"#022C22",fontWeight:"700",fontSize:"14px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+              {saving?"...":"Add"}
+            </button>
+          </div>
+
+          <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Default Types</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:"8px",marginBottom:"16px"}}>
+            {DEFAULT_TYPES.map(c=>(
+              <span key={c} style={{padding:"5px 12px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"20px",color:"#9CA3AF",fontSize:"12px"}}>
+                {ICONS[c]||"💡"} {c}
+              </span>
+            ))}
+          </div>
+
+          {customTypes.length > 0 && (<>
+            <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Your Types</p>
+            <div className="space-y-2 mb-6">
+              {customTypes.map(c=>(
+                <div key={c.id} className="px-4 py-3 rounded-xl" style={{background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.15)"}}>
+                  {editingId === c.id ? (
+                    <div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"8px"}}>
+                        {ICON_OPTIONS.map(ic=>(
+                          <button key={ic} onClick={()=>setEditIcon(ic)}
+                            style={{fontSize:"16px",padding:"3px 6px",borderRadius:"6px",cursor:"pointer",fontFamily:"inherit",
+                              border:`1px solid ${editIcon===ic?"rgba(52,211,153,0.5)":"rgba(255,255,255,0.08)"}`,
+                              background:editIcon===ic?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)"}}>
+                            {ic}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <input type="text" value={editName} onChange={e=>setEditName(e.target.value)} style={{...inp,flex:1,padding:"8px 12px"}}/>
+                        <button onClick={saveEdit} style={{padding:"0 14px",background:"#34D399",border:"none",borderRadius:"8px",color:"#022C22",fontWeight:"700",fontSize:"12px",cursor:"pointer"}}>Save</button>
+                        <button onClick={cancelEdit} style={{padding:"0 12px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"8px",color:"#6B7280",fontSize:"12px",cursor:"pointer"}}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span style={{color:"#E5E7EB",fontSize:"14px"}}>{c.icon} {c.name}</span>
+                      <div style={{display:"flex",gap:"6px"}}>
+                        <button onClick={()=>startEdit(c)}
+                          style={{color:"#8B5CF6",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",borderRadius:"6px",padding:"4px 8px",cursor:"pointer",fontSize:"12px",display:"flex",alignItems:"center"}}>
+                          <Pencil/>
+                        </button>
+                        <button onClick={()=>deleteType(c.id)}
+                          style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"14px"}}>
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>)}
+        </div>
+      </div>
+    </>
   );
 }
 
-// ── Entry Panel — handles both ADD and EDIT ────────────────────
-function EntryPanel({ open, onClose, onSave, uid, editEntry }) {
+// ── Entry Panel ────────────────────────────────────────────────
+function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageTypes }) {
   const isEdit = !!editEntry;
+  const accentColor = "#34D399";
 
   const [name,   setName]   = useState("");
   const [amount, setAmount] = useState("");
@@ -37,7 +171,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry }) {
   const [note,   setNote]   = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Pre-fill fields when editing
   useEffect(() => {
     if (!open) return;
     if (isEdit) {
@@ -59,39 +192,26 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry }) {
     setSaving(true);
     try {
       if (isEdit) {
-        // Update in Firestore
         await updateDoc(doc(db, "users", uid, "investments", editEntry.id), {
-          name:   name.trim(),
-          amount: parseFloat(amount),
-          date,
-          type,
-          note:   note.trim(),
+          name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim(),
         });
       } else {
-        // Add new
         await onSave({ name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim() });
       }
       onClose();
-    } catch (e) {
-      alert("Failed: " + e.message);
-    }
+    } catch (e) { alert("Failed: " + e.message); }
     setSaving(false);
   }
-
-  const accentColor = "#34D399";
 
   return (
     <>
       {open && <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose}/>}
       <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
-        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)"}}>
+        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"90vh",overflowY:"auto"}}>
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
-
         <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
-          <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px",fontFamily:"inherit"}}>←</button>
-          <h3 className="font-bold text-white text-base">
-            {isEdit ? "✏️ Edit Investment" : "Add Investment"}
-          </h3>
+          <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
+          <h3 className="font-bold text-white text-base">{isEdit ? "✏️ Edit Investment" : "Add Investment"}</h3>
           <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold"
             style={{background:`rgba(52,211,153,0.15)`,color:accentColor,border:`1px solid rgba(52,211,153,0.2)`}}>
             {isEdit ? "Editing" : "Invest"}
@@ -101,36 +221,36 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry }) {
         <div className="px-5 pt-4 pb-4 space-y-3">
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Date</label>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp}
-              onFocus={e=>e.target.style.borderColor=accentColor} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inp}/>
           </div>
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Amount (₹)</label>
-            <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" style={inp}
-              onFocus={e=>e.target.style.borderColor=accentColor} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            <input type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0.00" style={inp}/>
           </div>
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Name</label>
-            <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Zerodha Nifty 50" style={inp}
-              onFocus={e=>e.target.style.borderColor=accentColor} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Zerodha Nifty 50" style={inp}/>
           </div>
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Note (optional)</label>
-            <input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="Any note..." style={inp}
-              onFocus={e=>e.target.style.borderColor=accentColor} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            <input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="Any note..." style={inp}/>
           </div>
           <div>
-            <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Type</label>
-            <select value={type} onChange={e=>setType(e.target.value)} style={{...inp,background:"#0F172A"}}>
-              {TYPES.map(t=><option key={t} style={{background:"#0F172A"}}>{t}</option>)}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs uppercase tracking-wider" style={{color:"#6B7280"}}>Type</label>
+              <button onClick={()=>{onClose();onManageTypes();}}
+                style={{display:"flex",alignItems:"center",gap:"5px",color:"#34D399",background:"none",border:"none",cursor:"pointer",fontSize:"11px",fontWeight:"600",fontFamily:"inherit"}}>
+                + Add Type
+              </button>
+            </div>
+            <select value={type} onChange={e=>setType(e.target.value)} style={selectStyle}>
+              {allTypes.map(t=><option key={t.name} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal"}}>{t.icon} {t.name}</option>)}
             </select>
           </div>
         </div>
 
         <div className="flex gap-3 px-5 pb-8">
-          <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>
-            Cancel
-          </button>
+          <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
           <button onClick={save} disabled={saving} style={{flex:1,padding:"13px",background:saving?"rgba(52,211,153,0.4)":"linear-gradient(135deg,#34D399,#059669)",border:"none",borderRadius:"12px",color:"#022C22",fontWeight:"700",fontSize:"14px",cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
             {saving ? "Saving..." : isEdit ? "Update Entry" : "Save Entry"}
           </button>
@@ -140,16 +260,13 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry }) {
   );
 }
 
-// ── MonthCard ──────────────────────────────────────────────────
-function MonthCard({mk,entries,onClick}){
+function MonthCard({mk,entries,onClick,iconMap}){
   const[,m]=mk.split("-");const total=entries.reduce((s,e)=>s+e.amount,0);const has=entries.length>0;
   return(
-    <div onClick={()=>has&&onClick(mk)} style={{...card,padding:"12px",cursor:has?"pointer":"default",opacity:has?1:0.4,transition:"all .2s"}}
-      onMouseEnter={e=>{if(has){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.borderColor="rgba(52,211,153,0.3)";}}}
-      onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.borderColor="rgba(255,255,255,0.06)";}}>
+    <div onClick={()=>has&&onClick(mk)} style={{...card,padding:"12px",cursor:has?"pointer":"default",opacity:has?1:0.4}}>
       <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{color:"#9CA3AF"}}>{MONTHS[+m-1].slice(0,3)}</p>
       <div style={{minHeight:"52px",marginBottom:"10px"}}>
-        {entries.slice(0,3).map(e=>(<div key={e.id} className="flex justify-between text-xs mb-0.5"><span className="truncate mr-1" style={{color:"#6B7280"}}>{ICONS[e.type]||"💡"} {e.name.slice(0,10)}</span><span className="font-mono flex-shrink-0" style={{color:"#9CA3AF"}}>{fmt(e.amount)}</span></div>))}
+        {entries.slice(0,3).map(e=>(<div key={e.id} className="flex justify-between text-xs mb-0.5"><span className="truncate mr-1" style={{color:"#6B7280"}}>{iconMap[e.type]||"💡"} {e.name.slice(0,10)}</span><span className="font-mono flex-shrink-0" style={{color:"#9CA3AF"}}>{fmt(e.amount)}</span></div>))}
         {entries.length>3&&<p className="text-xs" style={{color:"#4B5563"}}>+{entries.length-3} more</p>}
         {!has&&<p className="text-xs" style={{color:"#374151"}}>No entries</p>}
       </div>
@@ -160,36 +277,28 @@ function MonthCard({mk,entries,onClick}){
   );
 }
 
-// ── MonthDetail ────────────────────────────────────────────────
-function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit}){
+function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconMap}){
   const{year,month}=parseKey(mk);
   function shift(dir){let nm=month+dir,ny=year;if(nm<1){nm=12;ny--;}if(nm>12){nm=1;ny++;}onChange(ny+"-"+String(nm).padStart(2,"0"));}
   const entries=investments.filter(e=>mkey(e.date)===mk);
   const total=entries.reduce((s,e)=>s+e.amount,0);
   const grouped=groupByDate(entries);
-  const navBtn={width:"42px",height:"42px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#E5E7EB",fontSize:"18px",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"};
+  const navBtn={width:"42px",height:"42px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#E5E7EB",fontSize:"18px",cursor:"pointer",fontFamily:"inherit"};
 
   return(
     <div>
-      <button onClick={onBack} className="text-sm font-medium block mb-4"
-        style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}
-        onMouseEnter={e=>e.currentTarget.style.color="#E5E7EB"}
-        onMouseLeave={e=>e.currentTarget.style.color="#6B7280"}>← Back</button>
+      <button onClick={onBack} className="text-sm font-medium block mb-4" style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>← Back</button>
 
       <div className="px-5 py-3 mb-3" style={{...card}}>
         <p className="font-bold text-white">Investment :</p>
       </div>
 
       <div className="flex items-center gap-2 mb-3">
-        <button onClick={()=>shift(-1)} style={navBtn}
-          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(52,211,153,0.4)";e.currentTarget.style.color="#34D399";}}
-          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";e.currentTarget.style.color="#E5E7EB";}}>◄</button>
+        <button onClick={()=>shift(-1)} style={navBtn}>◄</button>
         <div style={{flex:1,...card,padding:"10px",textAlign:"center"}}>
           <p className="font-bold text-white text-sm uppercase tracking-widest">{MONTHS[month-1]}</p>
         </div>
-        <button onClick={()=>shift(1)} style={navBtn}
-          onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(52,211,153,0.4)";e.currentTarget.style.color="#34D399";}}
-          onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";e.currentTarget.style.color="#E5E7EB";}}>►</button>
+        <button onClick={()=>shift(1)} style={navBtn}>►</button>
       </div>
 
       <div className="grid grid-cols-2 gap-2 mb-4">
@@ -214,46 +323,25 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit}){
           const dayTotal=dayEntries.reduce((s,e)=>s+e.amount,0);
           return(
             <div key={date} style={{...card,overflow:"hidden"}}>
-              <div className="flex justify-between px-5 py-3"
-                style={{borderBottom:"1px solid rgba(255,255,255,0.05)",background:"rgba(255,255,255,0.02)"}}>
+              <div className="flex justify-between px-5 py-3" style={{borderBottom:"1px solid rgba(255,255,255,0.05)",background:"rgba(255,255,255,0.02)"}}>
                 <p className="text-sm font-semibold font-mono" style={{color:"#9CA3AF"}}>{fmtDate(date)}</p>
                 <p className="text-sm font-bold font-mono" style={{color:"#E5E7EB"}}>{fmt(dayTotal)}</p>
               </div>
-
               {dayEntries.map((e,ei)=>(
-                <div key={e.id} className="flex items-center px-5 py-3.5 group transition-colors"
-                  style={{borderBottom:ei<dayEntries.length-1?"1px solid rgba(255,255,255,0.03)":"none"}}
-                  onMouseEnter={el=>el.currentTarget.style.background="rgba(255,255,255,0.02)"}
-                  onMouseLeave={el=>el.currentTarget.style.background="transparent"}>
-
-                  <div style={{width:"90px",flexShrink:0}}>
-                    <p className="text-sm" style={{color:"#9CA3AF"}}>{e.type}</p>
-                  </div>
-                  <div style={{flex:1,minWidth:0,padding:"0 12px"}}>
+                <div key={e.id} className="flex items-center px-4 py-3"
+                  style={{borderBottom:ei<dayEntries.length-1?"1px solid rgba(255,255,255,0.03)":"none"}}>
+                  <div style={{fontSize:"20px",flexShrink:0,width:"36px"}}>{iconMap[e.type]||"💡"}</div>
+                  <div style={{flex:1,minWidth:0,padding:"0 8px"}}>
                     <p className="text-sm font-medium truncate" style={{color:"#E5E7EB"}}>{e.name}</p>
-                    {e.note&&<p className="text-xs mt-0.5" style={{color:"#4B5563"}}>{e.note}</p>}
+                    <p className="text-xs truncate" style={{color:"#6B7280"}}>{e.type}{e.note ? ` · ${e.note}` : ""}</p>
                   </div>
                   <p className="text-sm font-bold font-mono flex-shrink-0 mr-2" style={{color:"#34D399"}}>{fmt(e.amount)}</p>
-
-                  {/* ── Pencil edit button ── */}
-                  <button
-                    onClick={()=>onEdit(e)}
-                    className="opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 mr-1"
-                    title="Edit entry"
-                    style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",padding:"4px 5px",display:"flex",alignItems:"center"}}
-                    onMouseEnter={el=>el.currentTarget.style.color="#34D399"}
-                    onMouseLeave={el=>el.currentTarget.style.color="#6B7280"}>
+                  <button onClick={()=>onEdit(e)} title="Edit"
+                    style={{color:"#8B5CF6",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",borderRadius:"8px",padding:"6px",cursor:"pointer",marginRight:"4px",display:"flex",alignItems:"center"}}>
                     <Pencil/>
                   </button>
-
-                  {/* ── Delete X button ── */}
-                  <button
-                    onClick={()=>onDelete("investments",e.id)}
-                    className="opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
-                    title="Delete entry"
-                    style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"14px",padding:"2px 4px"}}
-                    onMouseEnter={el=>el.currentTarget.style.color="#F87171"}
-                    onMouseLeave={el=>el.currentTarget.style.color="#6B7280"}>✕</button>
+                  <button onClick={()=>onDelete("investments",e.id)} title="Delete"
+                    style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"8px",padding:"6px 8px",cursor:"pointer",fontSize:"13px"}}>✕</button>
                 </div>
               ))}
             </div>
@@ -264,28 +352,41 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit}){
   );
 }
 
-// ── Main Page ──────────────────────────────────────────────────
-export default function Investments({firestoreData, user}){
+export default function Investments({firestoreData, user, quickAddTrigger}){
   const [activeMonth, setActiveMonth] = useState(null);
   const [panelOpen,   setPanelOpen]   = useState(false);
-  const [editEntry,   setEditEntry]   = useState(null); // null=add, obj=edit
+  const [editEntry,   setEditEntry]   = useState(null);
+  const [manageTypes, setManageTypes] = useState(false);
   const [vis,         setVis]         = useState(false);
 
   useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
 
-  const {investments=[],addEntry,deleteEntry,loading=false} = firestoreData||{};
+  const {investments=[], categories=[], addEntry, deleteEntry, loading=false} = firestoreData||{};
   const uid = user?.uid;
+
+  // ✨ NEW: respond to universal +
+  useEffect(()=>{
+    if (quickAddTrigger?.type === "investment") {
+      setEditEntry(null);
+      setPanelOpen(true);
+    }
+  }, [quickAddTrigger]);
+
+  // ✨ Shared types from same Firestore collection
+  const allTypes = [
+    ...DEFAULT_TYPES.map(name=>({name, icon:ICONS[name]||"💡"})),
+    ...categories.map(c=>({name:c.name, icon:c.icon})),
+  ];
+
+  const iconMap = {};
+  allTypes.forEach(t=>{ iconMap[t.name]=t.icon; });
+
   const year = new Date().getFullYear();
   const keys = buildKeys(year);
   const totalAll = investments.reduce((s,e)=>s+e.amount,0);
 
-  // Open panel in ADD mode
-  function openAdd() { setEditEntry(null); setPanelOpen(true); }
-
-  // Open panel in EDIT mode with pre-filled entry
   function openEdit(entry) { setEditEntry(entry); setPanelOpen(true); }
-
-  function closePanel() { setPanelOpen(false); setEditEntry(null); }
+  function closePanel()    { setPanelOpen(false); setEditEntry(null); }
 
   const handleAdd = useCallback(async(entry)=>{
     await addEntry("investments",entry);
@@ -306,12 +407,20 @@ export default function Investments({firestoreData, user}){
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(10px)",transition:"all .35s ease"}}>
 
       {!activeMonth&&(<>
-        <div className="mb-4">
-          <h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>Investments</h1>
-          <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>
-            {year} · Total: <span style={{color:"#34D399",fontWeight:600}}>{fmt(totalAll)}</span>
-          </p>
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>Investments</h1>
+            <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>
+              {year} · Total: <span style={{color:"#34D399",fontWeight:600}}>{fmt(totalAll)}</span>
+            </p>
+          </div>
+          <button onClick={()=>setManageTypes(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+            style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34D399",cursor:"pointer",fontFamily:"inherit"}}>
+            📊 Types
+          </button>
         </div>
+
         <div className="p-4 mb-5 flex justify-between items-center" style={{...card}}>
           <div>
             <p className="text-xs uppercase tracking-wider font-mono mb-1" style={{color:"#6B7280"}}>Total Invested {year}</p>
@@ -322,42 +431,22 @@ export default function Investments({firestoreData, user}){
             <p className="text-2xl font-bold" style={{color:"#E5E7EB"}}>{investments.length}</p>
           </div>
         </div>
+
         <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{color:"#4B5563"}}>Tap a month to view</p>
         <div className="grid grid-cols-3 gap-3">
           {keys.map(mk=>(
-            <MonthCard key={mk} mk={mk}
-              entries={investments.filter(e=>mkey(e.date)===mk)}
-              onClick={setActiveMonth}/>
+            <MonthCard key={mk} mk={mk} entries={investments.filter(e=>mkey(e.date)===mk)} onClick={setActiveMonth} iconMap={iconMap}/>
           ))}
         </div>
       </>)}
 
       {activeMonth&&(
-        <MonthDetail
-          mk={activeMonth}
-          onChange={setActiveMonth}
-          investments={investments}
-          onBack={()=>setActiveMonth(null)}
-          onDelete={handleDelete}
-          onEdit={openEdit}
-        />
+        <MonthDetail mk={activeMonth} onChange={setActiveMonth} investments={investments}
+          onBack={()=>setActiveMonth(null)} onDelete={handleDelete} onEdit={openEdit} iconMap={iconMap}/>
       )}
 
-      {/* Shared Add/Edit panel */}
-      <EntryPanel
-        open={panelOpen}
-        onClose={closePanel}
-        onSave={handleAdd}
-        uid={uid}
-        editEntry={editEntry}
-      />
-
-      {/* Floating + button */}
-      <button onClick={openAdd}
-        className="fixed bottom-20 right-5 md:bottom-6 flex items-center justify-center rounded-full transition-all hover:scale-110 z-30"
-        style={{width:"52px",height:"52px",background:"linear-gradient(135deg,#34D399,#059669)",border:"none",color:"#022C22",fontSize:"26px",cursor:"pointer",boxShadow:"0 8px 20px rgba(52,211,153,0.4)"}}>
-        +
-      </button>
+      <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)}/>
+      <ManageTypesPanel open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>
     </div>
   );
 }
