@@ -139,7 +139,6 @@ function LoadingScreen() {
 
 export default function App() {
   const [page, setPage] = useState("home");
-  // ✨ NEW: trigger to open add panel on target page
   const [quickAddTrigger, setQuickAddTrigger] = useState(null);
 
   const { user, loading, login, register, loginWithGoogle, logout } = useAuth();
@@ -156,34 +155,42 @@ export default function App() {
     return <AuthPage onLogin={handleLogin} onRegister={handleRegister} onGoogle={handleGoogle}/>;
   }
 
-  // ✨ NEW: handle universal quick-add
-  function handleQuickAdd(type) {
-    const pageMap = { investment: "investments", spending: "spending", autopay: "autopay" };
-    setPage(pageMap[type]);
-    // trigger uses a unique timestamp so child re-runs effect every time
-    setQuickAddTrigger({ type, ts: Date.now() });
+  function changePage(newPage) {
+    setQuickAddTrigger(null);
+    setPage(newPage);
   }
 
+  function handleQuickAdd(type) {
+    const pageMap = { investment: "investments", spending: "spending", autopay: "autopay" };
+    setQuickAddTrigger(null);
+    setPage(pageMap[type]);
+    setTimeout(() => {
+      setQuickAddTrigger({ type, ts: Date.now() });
+    }, 100);
+  }
+
+  // ✨ NEW: Added key={page} to force full remount on page change
+  // This kills ghost panels because old component is completely destroyed
   function renderPage() {
     switch (page) {
-      case "home":        return <Home        navigate={setPage} firestoreData={firestoreData} user={user}/>;
-      case "investments": return <Investments firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
-      case "spending":    return <Spending    firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
-      case "autopay":     return <Autopay     user={user} quickAddTrigger={quickAddTrigger}/>;
-      case "goals":       return <Goals       firestoreData={firestoreData} user={user}/>;
-      case "balance":     return <Balance     firestoreData={firestoreData} user={user}/>;
-      default:            return <Home        navigate={setPage} firestoreData={firestoreData} user={user}/>;
+      case "home":        return <Home        key="home"        navigate={changePage} firestoreData={firestoreData} user={user}/>;
+      case "investments": return <Investments key="investments" firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
+      case "spending":    return <Spending    key="spending"    firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
+      case "autopay":     return <Autopay     key="autopay"     user={user} quickAddTrigger={quickAddTrigger}/>;
+      case "goals":       return <Goals       key="goals"       firestoreData={firestoreData} user={user}/>;
+      case "balance":     return <Balance     key="balance"     firestoreData={firestoreData} user={user}/>;
+      default:            return <Home        key="home"        navigate={changePage} firestoreData={firestoreData} user={user}/>;
     }
   }
 
   return (
     <div className="min-h-screen text-white bg-gradient-to-br from-[#0B0F1A] via-[#0F172A] to-[#020617]">
-      <Header       current={page} onChange={setPage} user={user} onLogout={handleLogout}/>
-      <MobileTopbar current={page}                   user={user} onLogout={handleLogout}/>
+      <Header       current={page} onChange={changePage} user={user} onLogout={handleLogout}/>
+      <MobileTopbar current={page}                       user={user} onLogout={handleLogout}/>
       <main className="max-w-3xl mx-auto px-4 pb-24 lg:pb-10 pt-2">
         {renderPage()}
       </main>
-      <BottomNav current={page} onChange={setPage}/>
+      <BottomNav current={page} onChange={changePage}/>
       <QuickAddMenu onAdd={handleQuickAdd}/>
     </div>
   );

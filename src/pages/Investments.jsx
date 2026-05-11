@@ -366,11 +366,20 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
 
   // ✨ NEW: respond to universal +
   useEffect(()=>{
-    if (quickAddTrigger?.type === "investment") {
-      setEditEntry(null);
-      setPanelOpen(true);
-    }
-  }, [quickAddTrigger]);
+  if (quickAddTrigger?.type === "investment") {
+    setEditEntry(null);
+    setPanelOpen(true);
+  }
+}, [quickAddTrigger?.ts]);
+
+// ✨ NEW: Close panels when leaving this page
+useEffect(() => {
+  return () => {
+    setPanelOpen(false);
+    setManageTypes(false);
+    setEditEntry(null);
+  };
+}, []);
 
   // ✨ Shared types from same Firestore collection
   const allTypes = [
@@ -445,8 +454,8 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
           onBack={()=>setActiveMonth(null)} onDelete={handleDelete} onEdit={openEdit} iconMap={iconMap}/>
       )}
 
-      <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)}/>
-      <ManageTypesPanel open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>
+      {panelOpen   && <EntryPanel        open={panelOpen}   onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)}/>}
+      {manageTypes && <ManageTypesPanel  open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>}
     </div>
   );
 }

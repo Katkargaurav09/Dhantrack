@@ -394,11 +394,20 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
 
   // ✨ NEW: respond to universal +
   useEffect(()=>{
-    if (quickAddTrigger?.type === "spending") {
-      setEditEntry(null);
-      setPanelOpen(true);
-    }
-  }, [quickAddTrigger]);
+  if (quickAddTrigger?.type === "spending") {
+    setEditEntry(null);
+    setPanelOpen(true);
+  }
+}, [quickAddTrigger?.ts]);
+
+// ✨ NEW: Close panels when leaving this page
+useEffect(() => {
+  return () => {
+    setPanelOpen(false);
+    setManageCats(false);
+    setEditEntry(null);
+  };
+}, []);
 
   const allCats = [
     ...DEFAULT_CATS.map(name=>({name, icon:ICONS[name]||"💡"})),
@@ -472,8 +481,8 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
           onBack={()=>setActiveMonth(null)} onDelete={handleDelete} onEdit={openEdit} iconMap={iconMap}/>
       )}
 
-      <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allCats={allCats} onManageCats={()=>setManageCats(true)}/>
-      <ManageCatsPanel open={manageCats} onClose={()=>setManageCats(false)} uid={uid} customCats={categories}/>
+      {panelOpen  && <EntryPanel       open={panelOpen}  onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allCats={allCats} onManageCats={()=>setManageCats(true)}/>}
+      {manageCats && <ManageCatsPanel  open={manageCats} onClose={()=>setManageCats(false)} uid={uid} customCats={categories}/>}
     </div>
   );
 }

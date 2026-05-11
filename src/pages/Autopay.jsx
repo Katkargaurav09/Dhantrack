@@ -187,11 +187,21 @@ export default function Autopay({ user, quickAddTrigger }) {
 
   // ✨ NEW: respond to universal +
   useEffect(()=>{
-    if (quickAddTrigger?.type === "autopay") {
-      setEditSub(null);
-      setPanelOpen(true);
-    }
-  }, [quickAddTrigger]);
+  if (quickAddTrigger?.type === "autopay") {
+    setEditSub(null);
+    setPanelOpen(true);
+  }
+}, [quickAddTrigger?.ts]);
+
+// ✨ NEW: Close panels when leaving this page
+useEffect(() => {
+  return () => {
+    setPanelOpen(false);
+    setEditSub(null);
+    setShowRenewed(false);
+    setRenewedSub(null);
+  };
+}, []);
 
   useEffect(() => {
     if (!uid) return;
@@ -346,8 +356,8 @@ export default function Autopay({ user, quickAddTrigger }) {
         </div>
       )}
 
-      <AutopayPanel open={panelOpen} onClose={closePanel} uid={uid} editSub={editSub}/>
-      <RenewedPanel open={showRenewed} sub={renewedSub} onClose={()=>{setShowRenewed(false);setRenewedSub(null);}} onRenew={markRenewed}/>
+      {panelOpen   && <AutopayPanel open={panelOpen} onClose={closePanel} uid={uid} editSub={editSub}/>}
+      {showRenewed && <RenewedPanel open={showRenewed} sub={renewedSub} onClose={()=>{setShowRenewed(false);setRenewedSub(null);}} onRenew={markRenewed}/>}
     </div>
   );
 }

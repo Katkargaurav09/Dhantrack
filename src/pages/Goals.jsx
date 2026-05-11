@@ -90,7 +90,6 @@ function AddSavingsPanel({ open, onClose, onSave }) {
           <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold" style={{background:"rgba(52,211,153,0.15)",color:"#34D399",border:"1px solid rgba(52,211,153,0.2)"}}>Goal</span>
         </div>
         <div className="px-5 pt-4 pb-4 space-y-3">
-          {/* Emoji picker */}
           <div>
             <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Pick Icon</label>
             <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
@@ -168,13 +167,13 @@ function UpdateSavedPanel({ open, goal, onClose, onUpdate }) {
 }
 
 export default function Goals({ firestoreData, user }) {
-  const [tab,           setTab]           = useState("budget");
-  const [budgets,       setBudgets]       = useState([]);
-  const [savings,       setSavings]       = useState([]);
-  const [showBudget,    setShowBudget]    = useState(false);
-  const [showSavings,   setShowSavings]   = useState(false);
-  const [updateGoal,    setUpdateGoal]    = useState(null);
-  const [vis,           setVis]           = useState(false);
+  const [tab,         setTab]         = useState("budget");
+  const [budgets,     setBudgets]     = useState([]);
+  const [savings,     setSavings]     = useState([]);
+  const [showBudget,  setShowBudget]  = useState(false);
+  const [showSavings, setShowSavings] = useState(false);
+  const [updateGoal,  setUpdateGoal]  = useState(null);
+  const [vis,         setVis]         = useState(false);
 
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
 
@@ -199,6 +198,15 @@ export default function Goals({ firestoreData, user }) {
     );
     return () => unsub();
   }, [uid]);
+
+  // ✨ Close panels when leaving this page
+  useEffect(() => {
+    return () => {
+      setShowBudget(false);
+      setShowSavings(false);
+      setUpdateGoal(null);
+    };
+  }, []);
 
   // ── Firestore actions ──
   const addBudget = useCallback(async (data) => {
@@ -230,7 +238,6 @@ export default function Goals({ firestoreData, user }) {
   return (
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(10px)",transition:"all .35s ease"}}>
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>Goals</h1>
@@ -243,7 +250,6 @@ export default function Goals({ firestoreData, user }) {
         </button>
       </div>
 
-      {/* Tab switcher */}
       <div className="flex gap-2 mb-5">
         {[["budget","🎯 Budget Goals"],["savings","💰 Savings Goals"]].map(([id,label])=>(
           <button key={id} onClick={()=>setTab(id)}
@@ -259,7 +265,6 @@ export default function Goals({ firestoreData, user }) {
         ))}
       </div>
 
-      {/* ══ BUDGET GOALS TAB ══ */}
       {tab === "budget" && (
         <>
           {budgets.length === 0 ? (
@@ -291,9 +296,7 @@ export default function Goals({ firestoreData, user }) {
                         </div>
                       </div>
                       <button onClick={()=>deleteBudget(goal.id)}
-                        style={{color:"#4B5563",background:"none",border:"none",cursor:"pointer",fontSize:"16px",padding:"2px 6px"}}
-                        onMouseEnter={e=>e.currentTarget.style.color="#F87171"}
-                        onMouseLeave={e=>e.currentTarget.style.color="#4B5563"}>✕</button>
+                        style={{color:"#4B5563",background:"none",border:"none",cursor:"pointer",fontSize:"16px",padding:"2px 6px"}}>✕</button>
                     </div>
                     <div style={{height:"8px",background:"rgba(255,255,255,0.06)",borderRadius:"99px",overflow:"hidden",marginBottom:"8px"}}>
                       <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:"99px",transition:"width .5s ease"}}/>
@@ -312,7 +315,6 @@ export default function Goals({ firestoreData, user }) {
         </>
       )}
 
-      {/* ══ SAVINGS GOALS TAB ══ */}
       {tab === "savings" && (
         <>
           {savings.length === 0 ? (
@@ -343,9 +345,7 @@ export default function Goals({ firestoreData, user }) {
                         </div>
                       </div>
                       <button onClick={()=>deleteSavingsGoal(goal.id)}
-                        style={{color:"#4B5563",background:"none",border:"none",cursor:"pointer",fontSize:"16px",padding:"2px 6px"}}
-                        onMouseEnter={e=>e.currentTarget.style.color="#F87171"}
-                        onMouseLeave={e=>e.currentTarget.style.color="#4B5563"}>✕</button>
+                        style={{color:"#4B5563",background:"none",border:"none",cursor:"pointer",fontSize:"16px",padding:"2px 6px"}}>✕</button>
                     </div>
                     <div style={{height:"10px",background:"rgba(255,255,255,0.06)",borderRadius:"99px",overflow:"hidden",marginBottom:"10px"}}>
                       <div style={{height:"100%",width:`${pct}%`,background:done?"linear-gradient(90deg,#FBBF24,#F59E0B)":"linear-gradient(90deg,#34D399,#059669)",borderRadius:"99px",transition:"width .5s ease"}}/>
@@ -369,9 +369,9 @@ export default function Goals({ firestoreData, user }) {
         </>
       )}
 
-      <AddBudgetPanel  open={showBudget}  onClose={()=>setShowBudget(false)}  onSave={addBudget}/>
-      <AddSavingsPanel open={showSavings} onClose={()=>setShowSavings(false)} onSave={addSavingsGoal}/>
-      <UpdateSavedPanel open={!!updateGoal} goal={updateGoal} onClose={()=>setUpdateGoal(null)} onUpdate={updateSaved}/>
+      {showBudget  && <AddBudgetPanel   open={showBudget}  onClose={()=>setShowBudget(false)}  onSave={addBudget}/>}
+      {showSavings && <AddSavingsPanel  open={showSavings} onClose={()=>setShowSavings(false)} onSave={addSavingsGoal}/>}
+      {updateGoal  && <UpdateSavedPanel open={!!updateGoal} goal={updateGoal} onClose={()=>setUpdateGoal(null)} onUpdate={updateSaved}/>}
     </div>
   );
 }
