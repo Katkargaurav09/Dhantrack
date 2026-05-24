@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { db } from "../firebase/config";
 import { doc, updateDoc, collection, addDoc, deleteDoc } from "firebase/firestore";
+import CategoryDetail from "./CategoryDetail";
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DEFAULT_CATS=["Food","Travel","Shopping","Entertainment","Course","Electronics","Health","Utilities","Rent","Fuel","Other"];
@@ -15,12 +16,11 @@ function groupByDate(entries){const map={};entries.forEach(e=>{if(!map[e.date])m
 
 const card={background:"linear-gradient(145deg,#1A2333,#0F172A)",border:"1px solid rgba(255,255,255,0.06)",boxShadow:"0 10px 30px rgba(0,0,0,0.4)",borderRadius:"16px"};
 const inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",padding:"13px 16px",color:"#E5E7EB",fontSize:"14px",outline:"none",transition:"border-color .2s",fontFamily:"inherit",boxSizing:"border-box"};
-// ✨ NEW: Custom select with proper arrow position
 const selectStyle = { ...inp, background:"#0F172A", appearance:"none", WebkitAppearance:"none", MozAppearance:"none", backgroundImage:"url(\"data:image/svg+xml;charset=US-ASCII,%3Csvg width='12' height='8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%236B7280' d='M6 8L0 0h12z'/%3E%3C/svg%3E\")", backgroundRepeat:"no-repeat", backgroundPosition:"right 16px center", paddingRight:"40px" };
 
 function Pencil(){return(<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>);}
 
-// ── Manage Categories Panel (with EDIT) ────────────────────────
+// ── Manage Categories Panel ────────────────────────────────────
 function ManageCatsPanel({ open, onClose, uid, customCats }) {
   const [newCat,    setNewCat]    = useState("");
   const [newIcon,   setNewIcon]   = useState("💡");
@@ -57,9 +57,7 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
   async function saveEdit() {
     if (!editName.trim()) return;
     try {
-      await updateDoc(doc(db, "users", uid, "categories", editingId), {
-        name: editName.trim(), icon: editIcon
-      });
+      await updateDoc(doc(db, "users", uid, "categories", editingId), { name: editName.trim(), icon: editIcon });
       setEditingId(null);
     } catch(e) { alert(e.message); }
   }
@@ -70,15 +68,12 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
       <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
         style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"85vh",overflowY:"auto"}}>
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
-
         <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
           <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
           <h3 className="font-bold text-white text-base">🏷️ Manage Categories</h3>
         </div>
-
         <div className="px-5 pt-4 pb-2">
           <p className="text-xs uppercase tracking-wider mb-3" style={{color:"#6B7280"}}>Add New Category</p>
-
           <div className="mb-3">
             <label className="text-xs block mb-2" style={{color:"#6B7280"}}>Pick an icon</label>
             <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
@@ -86,24 +81,19 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
                 <button key={ic} onClick={()=>setNewIcon(ic)}
                   style={{fontSize:"20px",padding:"5px 8px",borderRadius:"8px",cursor:"pointer",fontFamily:"inherit",
                     border:`1px solid ${newIcon===ic?"rgba(248,113,113,0.5)":"rgba(255,255,255,0.08)"}`,
-                    background:newIcon===ic?"rgba(248,113,113,0.1)":"rgba(255,255,255,0.03)"}}>
-                  {ic}
-                </button>
+                    background:newIcon===ic?"rgba(248,113,113,0.1)":"rgba(255,255,255,0.03)"}}>{ic}</button>
               ))}
             </div>
           </div>
-
           <div className="flex gap-2 mb-5">
             <input type="text" value={newCat} onChange={e=>setNewCat(e.target.value)}
-              placeholder="Category name e.g. Gym, Coffee..."
-              style={{...inp,flex:1}}
+              placeholder="Category name e.g. Gym, Coffee..." style={{...inp,flex:1}}
               onKeyDown={e=>e.key==="Enter"&&addCat()}/>
             <button onClick={addCat} disabled={saving}
               style={{padding:"0 18px",background:"linear-gradient(135deg,#F87171,#ef4444)",border:"none",borderRadius:"12px",color:"#fff",fontWeight:"700",fontSize:"14px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
               {saving?"...":"Add"}
             </button>
           </div>
-
           <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Default Categories</p>
           <div style={{display:"flex",flexWrap:"wrap",gap:"8px",marginBottom:"16px"}}>
             {DEFAULT_CATS.map(c=>(
@@ -112,7 +102,6 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
               </span>
             ))}
           </div>
-
           {customCats.length > 0 && (<>
             <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Your Categories</p>
             <div className="space-y-2 mb-6">
@@ -126,9 +115,7 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
                           <button key={ic} onClick={()=>setEditIcon(ic)}
                             style={{fontSize:"16px",padding:"3px 6px",borderRadius:"6px",cursor:"pointer",fontFamily:"inherit",
                               border:`1px solid ${editIcon===ic?"rgba(248,113,113,0.5)":"rgba(255,255,255,0.08)"}`,
-                              background:editIcon===ic?"rgba(248,113,113,0.1)":"rgba(255,255,255,0.03)"}}>
-                            {ic}
-                          </button>
+                              background:editIcon===ic?"rgba(248,113,113,0.1)":"rgba(255,255,255,0.03)"}}>{ic}</button>
                         ))}
                       </div>
                       <div className="flex gap-2">
@@ -146,9 +133,7 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
                           <Pencil/>
                         </button>
                         <button onClick={()=>deleteCat(c.id)}
-                          style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"14px"}}>
-                          ✕
-                        </button>
+                          style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"14px"}}>✕</button>
                       </div>
                     </div>
                   )}
@@ -166,25 +151,19 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
 function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCats }) {
   const isEdit = !!editEntry;
   const accentColor = "#F87171";
-
-  const [name,   setName]   = useState("");
-  const [amount, setAmount] = useState("");
-  const [date,   setDate]   = useState(new Date().toISOString().split("T")[0]);
-  const [type,   setType]   = useState("Food");
-  const [note,   setNote]   = useState("");
-  const [saving, setSaving] = useState(false);
+  const [name,setName]=useState(""); const [amount,setAmount]=useState("");
+  const [date,setDate]=useState(new Date().toISOString().split("T")[0]);
+  const [type,setType]=useState("Food"); const [note,setNote]=useState("");
+  const [saving,setSaving]=useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (isEdit) {
-      setName(editEntry.name || "");
-      setAmount(String(editEntry.amount || ""));
+      setName(editEntry.name || ""); setAmount(String(editEntry.amount || ""));
       setDate(editEntry.date || new Date().toISOString().split("T")[0]);
-      setType(editEntry.type || "Food");
-      setNote(editEntry.note || "");
+      setType(editEntry.type || "Food"); setNote(editEntry.note || "");
     } else {
-      setName(""); setAmount(""); setNote("");
-      setType("Food");
+      setName(""); setAmount(""); setNote(""); setType("Food");
       setDate(new Date().toISOString().split("T")[0]);
     }
     setSaving(false);
@@ -212,7 +191,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
       <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
         style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"90vh",overflowY:"auto"}}>
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
-
         <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
           <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
           <h3 className="font-bold text-white text-base">{isEdit ? "✏️ Edit Spending" : "Add Spending"}</h3>
@@ -221,7 +199,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
             {isEdit ? "Editing" : "Spent"}
           </span>
         </div>
-
         <div className="px-5 pt-4 pb-4 space-y-3">
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Date</label>
@@ -239,7 +216,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Note (optional)</label>
             <input type="text" value={note} onChange={e=>setNote(e.target.value)} placeholder="Any note..." style={inp}/>
           </div>
-
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs uppercase tracking-wider" style={{color:"#6B7280"}}>Category</label>
@@ -253,7 +229,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
             </select>
           </div>
         </div>
-
         <div className="flex gap-3 px-5 pb-8">
           <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
           <button onClick={save} disabled={saving} style={{flex:1,padding:"13px",background:saving?"rgba(248,113,113,0.4)":"linear-gradient(135deg,#F87171,#ef4444)",border:"none",borderRadius:"12px",color:"#fff",fontWeight:"700",fontSize:"14px",cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
@@ -282,7 +257,7 @@ function MonthCard({mk,entries,onClick,iconMap}){
   );
 }
 
-function MonthDetail({mk,onChange,spendings,onBack,onDelete,onEdit,iconMap}){
+function MonthDetail({mk,onChange,spendings,onBack,onDelete,onEdit,iconMap,onCategoryClick}){
   const{year,month}=parseKey(mk);
   function shift(dir){let nm=month+dir,ny=year;if(nm<1){nm=12;ny--;}if(nm>12){nm=1;ny++;}onChange(ny+"-"+String(nm).padStart(2,"0"));}
   const entries=spendings.filter(e=>mkey(e.date)===mk);
@@ -317,23 +292,30 @@ function MonthDetail({mk,onChange,spendings,onBack,onDelete,onEdit,iconMap}){
         ))}
       </div>
 
+      {/* ✨ MODIFIED: By Category rows are now TAPPABLE → opens drill-down */}
       {byCat.length>0&&(
         <div className="p-4 mb-4" style={{...card}}>
-          <p className="text-xs uppercase tracking-wider mb-3" style={{color:"#4B5563"}}>By Category</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-wider" style={{color:"#4B5563"}}>By Category</p>
+            <span style={{color:"#6B7280",fontSize:"10px",fontStyle:"italic"}}>Tap to view all</span>
+          </div>
           <div className="space-y-2">
             {byCat.map(({cat,icon,total:ct})=>(
-              <div key={cat} className="flex items-center gap-2">
+              <button key={cat} onClick={()=>onCategoryClick(cat,icon)}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:"8px",padding:"6px 4px",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",borderRadius:"8px",transition:"background .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(248,113,113,0.04)"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <span style={{fontSize:"14px",width:"20px"}}>{icon}</span>
-                <div style={{flex:1}}>
+                <div style={{flex:1,textAlign:"left"}}>
                   <div className="flex justify-between text-xs mb-1">
                     <span style={{color:"#9CA3AF"}}>{cat}</span>
-                    <span className="font-mono" style={{color:"#F87171"}}>{fmt(ct)}</span>
+                    <span className="font-mono" style={{color:"#F87171"}}>{fmt(ct)} ›</span>
                   </div>
                   <div style={{height:"3px",background:"rgba(255,255,255,0.05)",borderRadius:"99px",overflow:"hidden"}}>
                     <div style={{height:"100%",background:"rgba(248,113,113,0.6)",borderRadius:"99px",width:`${(ct/total)*100}%`}}/>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -381,33 +363,33 @@ function MonthDetail({mk,onChange,spendings,onBack,onDelete,onEdit,iconMap}){
 }
 
 export default function Spending({firestoreData, user, quickAddTrigger}){
-  const [activeMonth,  setActiveMonth]  = useState(null);
-  const [panelOpen,    setPanelOpen]    = useState(false);
-  const [editEntry,    setEditEntry]    = useState(null);
-  const [manageCats,   setManageCats]   = useState(false);
-  const [vis,          setVis]          = useState(false);
+  const [activeMonth,    setActiveMonth]    = useState(null);
+  const [panelOpen,      setPanelOpen]      = useState(false);
+  const [editEntry,      setEditEntry]      = useState(null);
+  const [manageCats,     setManageCats]     = useState(false);
+  const [activeCategory, setActiveCategory] = useState(null); // ✨ NEW: drill-down state
+  const [vis,            setVis]            = useState(false);
 
   useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
 
   const {spendings=[], categories=[], addEntry, deleteEntry, loading=false} = firestoreData||{};
   const uid = user?.uid;
 
-  // ✨ NEW: respond to universal +
   useEffect(()=>{
-  if (quickAddTrigger?.type === "spending") {
-    setEditEntry(null);
-    setPanelOpen(true);
-  }
-}, [quickAddTrigger?.ts]);
+    if (quickAddTrigger?.type === "spending") {
+      setEditEntry(null);
+      setPanelOpen(true);
+    }
+  }, [quickAddTrigger?.ts]);
 
-// ✨ NEW: Close panels when leaving this page
-useEffect(() => {
-  return () => {
-    setPanelOpen(false);
-    setManageCats(false);
-    setEditEntry(null);
-  };
-}, []);
+  useEffect(() => {
+    return () => {
+      setPanelOpen(false);
+      setManageCats(false);
+      setEditEntry(null);
+      setActiveCategory(null);
+    };
+  }, []);
 
   const allCats = [
     ...DEFAULT_CATS.map(name=>({name, icon:ICONS[name]||"💡"})),
@@ -424,6 +406,11 @@ useEffect(() => {
   function openEdit(entry) { setEditEntry(entry); setPanelOpen(true); }
   function closePanel()    { setPanelOpen(false); setEditEntry(null); }
 
+  // ✨ NEW: Open drill-down for a category
+  function openCategoryDetail(catName, catIcon) {
+    setActiveCategory({ name: catName, icon: catIcon });
+  }
+
   const handleAdd = useCallback(async(entry)=>{
     await addEntry("spendings",entry);
     setActiveMonth(mkey(entry.date));
@@ -438,6 +425,22 @@ useEffect(() => {
       {[1,2,3].map(i=><div key={i} style={{...card,height:"80px",opacity:0.5}}/>)}
     </div>
   );
+
+  // ✨ NEW: If user tapped a category, show CategoryDetail
+  if (activeCategory) {
+    const categoryEntries = spendings.filter(e => e.type === activeCategory.name);
+    return (
+      <CategoryDetail
+        categoryName={activeCategory.name}
+        categoryIcon={activeCategory.icon}
+        entries={categoryEntries}
+        kind="spending"
+        onBack={() => setActiveCategory(null)}
+        onEdit={(entry) => { setActiveCategory(null); openEdit(entry); }}
+        onDelete={handleDelete}
+      />
+    );
+  }
 
   return(
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(10px)",transition:"all .35s ease"}}>
@@ -468,6 +471,47 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* ✨ NEW: Quick category access from main page */}
+        {(() => {
+          const allCatsWithSpend = allCats.map(c => ({
+            ...c,
+            total: spendings.filter(e => e.type === c.name).reduce((s,e) => s+Number(e.amount), 0),
+            count: spendings.filter(e => e.type === c.name).length,
+          })).filter(c => c.count > 0).sort((a,b) => b.total - a.total);
+
+          if (allCatsWithSpend.length === 0) return null;
+
+          return (
+            <div style={{...card, padding: "16px", marginBottom: "20px"}}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs uppercase tracking-wider font-mono" style={{color:"#6B7280"}}>All-Time Categories</p>
+                <span style={{color:"#6B7280",fontSize:"10px",fontStyle:"italic"}}>Tap to drill down</span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
+                {allCatsWithSpend.slice(0, 8).map(c => (
+                  <button key={c.name} onClick={()=>openCategoryDetail(c.name, c.icon)}
+                    style={{
+                      padding:"8px 12px",
+                      background:"rgba(248,113,113,0.06)",
+                      border:"1px solid rgba(248,113,113,0.15)",
+                      borderRadius:"10px",
+                      color:"#E5E7EB",fontSize:"12px",
+                      cursor:"pointer",fontFamily:"inherit",
+                      display:"flex",alignItems:"center",gap:"6px",
+                      transition:"all .15s",
+                    }}
+                    onMouseEnter={e=>{e.currentTarget.style.background="rgba(248,113,113,0.12)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.background="rgba(248,113,113,0.06)";}}>
+                    <span>{c.icon}</span>
+                    <span>{c.name}</span>
+                    <span style={{color:"#F87171",fontFamily:"monospace",fontWeight:600}}>{fmt(c.total)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{color:"#4B5563"}}>Tap a month to view</p>
         <div className="grid grid-cols-3 gap-3">
           {keys.map(mk=>(
@@ -478,11 +522,12 @@ useEffect(() => {
 
       {activeMonth&&(
         <MonthDetail mk={activeMonth} onChange={setActiveMonth} spendings={spendings}
-          onBack={()=>setActiveMonth(null)} onDelete={handleDelete} onEdit={openEdit} iconMap={iconMap}/>
+          onBack={()=>setActiveMonth(null)} onDelete={handleDelete} onEdit={openEdit} 
+          iconMap={iconMap} onCategoryClick={openCategoryDetail}/>
       )}
 
-      {panelOpen  && <EntryPanel       open={panelOpen}  onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allCats={allCats} onManageCats={()=>setManageCats(true)}/>}
-      {manageCats && <ManageCatsPanel  open={manageCats} onClose={()=>setManageCats(false)} uid={uid} customCats={categories}/>}
+      {panelOpen  && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allCats={allCats} onManageCats={()=>setManageCats(true)}/>}
+      {manageCats && <ManageCatsPanel open={manageCats} onClose={()=>setManageCats(false)} uid={uid} customCats={categories}/>}
     </div>
   );
 }

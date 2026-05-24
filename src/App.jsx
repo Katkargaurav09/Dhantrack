@@ -9,6 +9,7 @@ import Balance       from "./pages/Balance";
 import useAuth       from "./hooks/Useauth";
 import useFirestore  from "./hooks/Usefirestore";
 import QuickAddMenu  from "./components/QuickAddMenu";
+import SearchOverlay from "./components/SearchOverlay";
 
 const NAV = [
   { id: "home",        label: "Home",   fullLabel: "Overview",    icon: "🏠" },
@@ -55,7 +56,30 @@ function UserAvatar({ user, onLogout }) {
   );
 }
 
-function Header({ current, onChange, user, onLogout }) {
+// ✨ NEW: Search Icon Button
+function SearchButton({ onClick }) {
+  return (
+    <button onClick={onClick} title="Search"
+      style={{
+        width:"36px",height:"36px",borderRadius:"50%",
+        background:"rgba(255,255,255,0.05)",
+        border:"1px solid rgba(255,255,255,0.1)",
+        display:"flex",alignItems:"center",justifyContent:"center",
+        cursor:"pointer",transition:"all .2s",flexShrink:0,
+        color:"#9CA3AF",
+      }}
+      onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.1)"; e.currentTarget.style.borderColor="rgba(52,211,153,0.3)"; e.currentTarget.style.color="#34D399";}}
+      onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.1)"; e.currentTarget.style.color="#9CA3AF";}}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+    </button>
+  );
+}
+
+function Header({ current, onChange, user, onLogout, onSearch }) {
   const today = new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
   return (
     <header className="hidden lg:flex sticky top-0 z-40 items-center justify-between px-8 h-16 border-b border-white/10 bg-white/5 backdrop-blur-xl">
@@ -80,15 +104,16 @@ function Header({ current, onChange, user, onLogout }) {
           );
         })}
       </nav>
-      <div className="flex items-center gap-4 flex-shrink-0">
+      <div className="flex items-center gap-3 flex-shrink-0">
         <span className="text-xs font-mono text-white/30">{today}</span>
+        <SearchButton onClick={onSearch}/>
         <UserAvatar user={user} onLogout={onLogout}/>
       </div>
     </header>
   );
 }
 
-function MobileTopbar({ current, user, onLogout }) {
+function MobileTopbar({ current, user, onLogout, onSearch }) {
   const page  = NAV.find(n=>n.id===current);
   const today = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short"});
   return (
@@ -101,8 +126,8 @@ function MobileTopbar({ current, user, onLogout }) {
         <span className="text-base">{page?.icon}</span>
         <span className="text-sm font-medium text-white/70">{page?.fullLabel}</span>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs font-mono text-white/30 hidden sm:block">{today}</span>
+      <div className="flex items-center gap-2">
+        <SearchButton onClick={onSearch}/>
         <UserAvatar user={user} onLogout={onLogout}/>
       </div>
     </header>
@@ -140,6 +165,8 @@ function LoadingScreen() {
 export default function App() {
   const [page, setPage] = useState("home");
   const [quickAddTrigger, setQuickAddTrigger] = useState(null);
+  // ✨ NEW: Search overlay state
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { user, loading, login, register, loginWithGoogle, logout } = useAuth();
   const firestoreData = useFirestore(user?.uid || null);
@@ -157,6 +184,7 @@ export default function App() {
 
   function changePage(newPage) {
     setQuickAddTrigger(null);
+    setSearchOpen(false); // Close search if open
     setPage(newPage);
   }
 
@@ -169,8 +197,12 @@ export default function App() {
     }, 100);
   }
 
-  // ✨ NEW: Added key={page} to force full remount on page change
-  // This kills ghost panels because old component is completely destroyed
+  // ✨ NEW: When user taps a search result, navigate to that page
+  function handleSearchNavigate(targetPage) {
+    setSearchOpen(false);
+    setPage(targetPage);
+  }
+
   function renderPage() {
     switch (page) {
       case "home":        return <Home        key="home"        navigate={changePage} firestoreData={firestoreData} user={user}/>;
@@ -185,13 +217,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen text-white bg-gradient-to-br from-[#0B0F1A] via-[#0F172A] to-[#020617]">
-      <Header       current={page} onChange={changePage} user={user} onLogout={handleLogout}/>
-      <MobileTopbar current={page}                       user={user} onLogout={handleLogout}/>
+      <Header       current={page} onChange={changePage} user={user} onLogout={handleLogout} onSearch={()=>setSearchOpen(true)}/>
+      <MobileTopbar current={page}                       user={user} onLogout={handleLogout} onSearch={()=>setSearchOpen(true)}/>
       <main className="max-w-3xl mx-auto px-4 pb-24 lg:pb-10 pt-2">
         {renderPage()}
       </main>
       <BottomNav current={page} onChange={changePage}/>
       <QuickAddMenu onAdd={handleQuickAdd}/>
+      
+      {/* ✨ NEW: Search Overlay */}
+      {searchOpen && (
+        <SearchOverlay 
+          firestoreData={firestoreData} 
+          user={user}
+          onClose={()=>setSearchOpen(false)}
+          onNavigate={handleSearchNavigate}
+        />
+      )}
     </div>
   );
 }

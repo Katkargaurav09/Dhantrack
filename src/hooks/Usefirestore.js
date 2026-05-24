@@ -9,6 +9,7 @@ export default function useFirestore(uid) {
   const [investments, setInvestments] = useState([]);
   const [spendings,   setSpendings]   = useState([]);
   const [categories,  setCategories]  = useState([]);
+  const [pools,       setPools]       = useState([]); // ✨ NEW
   const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
@@ -34,13 +35,24 @@ export default function useFirestore(uid) {
     return () => unsub();
   }, [uid]);
 
-  // ✨ NEW: Shared categories listener
+  // Shared categories listener
   useEffect(() => {
     if (!uid) return;
     const unsub = onSnapshot(
       collection(db, "users", uid, "categories"),
       snap => setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err  => console.error("Categories error:", err.message)
+    );
+    return () => unsub();
+  }, [uid]);
+
+  // ✨ NEW: Spending Pools listener
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(
+      collection(db, "users", uid, "pools"),
+      snap => setPools(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error("Pools error:", err.message)
     );
     return () => unsub();
   }, [uid]);
@@ -68,7 +80,7 @@ export default function useFirestore(uid) {
   const netBalance    = totalInvested - totalSpent;
 
   return {
-    investments, spendings, categories, loading,
+    investments, spendings, categories, pools, loading,
     addEntry, deleteEntry,
     totalInvested, totalSpent, netBalance,
   };

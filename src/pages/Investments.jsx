@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { db } from "../firebase/config";
 import { doc, updateDoc, collection, addDoc, deleteDoc } from "firebase/firestore";
+import CategoryDetail from "./CategoryDetail";
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DEFAULT_TYPES=["Stock","Crypto","Mutual Fund","Gold","FD/RD","ETF","Other"];
@@ -15,7 +16,6 @@ function groupByDate(entries){const map={};entries.forEach(e=>{if(!map[e.date])m
 
 const card={background:"linear-gradient(145deg,#1A2333,#0F172A)",border:"1px solid rgba(255,255,255,0.06)",boxShadow:"0 10px 30px rgba(0,0,0,0.4)",borderRadius:"16px"};
 const inp={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",padding:"13px 16px",color:"#E5E7EB",fontSize:"14px",outline:"none",transition:"border-color .2s",fontFamily:"inherit",boxSizing:"border-box"};
-// ✨ NEW: Custom select with proper arrow
 const selectStyle = { ...inp, background:"#0F172A", appearance:"none", WebkitAppearance:"none", MozAppearance:"none", backgroundImage:"url(\"data:image/svg+xml;charset=US-ASCII,%3Csvg width='12' height='8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill='%236B7280' d='M6 8L0 0h12z'/%3E%3C/svg%3E\")", backgroundRepeat:"no-repeat", backgroundPosition:"right 16px center", paddingRight:"40px" };
 
 function Pencil(){return(<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>);}
@@ -57,9 +57,7 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
   async function saveEdit() {
     if (!editName.trim()) return;
     try {
-      await updateDoc(doc(db, "users", uid, "categories", editingId), {
-        name: editName.trim(), icon: editIcon
-      });
+      await updateDoc(doc(db, "users", uid, "categories", editingId), { name: editName.trim(), icon: editIcon });
       setEditingId(null);
     } catch(e) { alert(e.message); }
   }
@@ -74,10 +72,8 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
           <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
           <h3 className="font-bold text-white text-base">📊 Manage Investment Types</h3>
         </div>
-
         <div className="px-5 pt-4 pb-2">
           <p className="text-xs uppercase tracking-wider mb-3" style={{color:"#6B7280"}}>Add New Type</p>
-
           <div className="mb-3">
             <label className="text-xs block mb-2" style={{color:"#6B7280"}}>Pick an icon</label>
             <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
@@ -85,23 +81,18 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
                 <button key={ic} onClick={()=>setNewIcon(ic)}
                   style={{fontSize:"20px",padding:"5px 8px",borderRadius:"8px",cursor:"pointer",fontFamily:"inherit",
                     border:`1px solid ${newIcon===ic?"rgba(52,211,153,0.5)":"rgba(255,255,255,0.08)"}`,
-                    background:newIcon===ic?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)"}}>
-                  {ic}
-                </button>
+                    background:newIcon===ic?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)"}}>{ic}</button>
               ))}
             </div>
           </div>
-
           <div className="flex gap-2 mb-5">
             <input type="text" value={newType} onChange={e=>setNewType(e.target.value)}
-              placeholder="Type name e.g. Real Estate, NPS..."
-              style={{...inp,flex:1}} onKeyDown={e=>e.key==="Enter"&&addType()}/>
+              placeholder="Type name e.g. Real Estate, NPS..." style={{...inp,flex:1}} onKeyDown={e=>e.key==="Enter"&&addType()}/>
             <button onClick={addType} disabled={saving}
               style={{padding:"0 18px",background:"linear-gradient(135deg,#34D399,#059669)",border:"none",borderRadius:"12px",color:"#022C22",fontWeight:"700",fontSize:"14px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
               {saving?"...":"Add"}
             </button>
           </div>
-
           <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Default Types</p>
           <div style={{display:"flex",flexWrap:"wrap",gap:"8px",marginBottom:"16px"}}>
             {DEFAULT_TYPES.map(c=>(
@@ -110,7 +101,6 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
               </span>
             ))}
           </div>
-
           {customTypes.length > 0 && (<>
             <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Your Types</p>
             <div className="space-y-2 mb-6">
@@ -123,9 +113,7 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
                           <button key={ic} onClick={()=>setEditIcon(ic)}
                             style={{fontSize:"16px",padding:"3px 6px",borderRadius:"6px",cursor:"pointer",fontFamily:"inherit",
                               border:`1px solid ${editIcon===ic?"rgba(52,211,153,0.5)":"rgba(255,255,255,0.08)"}`,
-                              background:editIcon===ic?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)"}}>
-                            {ic}
-                          </button>
+                              background:editIcon===ic?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)"}}>{ic}</button>
                         ))}
                       </div>
                       <div className="flex gap-2">
@@ -143,9 +131,7 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
                           <Pencil/>
                         </button>
                         <button onClick={()=>deleteType(c.id)}
-                          style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"14px"}}>
-                          ✕
-                        </button>
+                          style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"14px"}}>✕</button>
                       </div>
                     </div>
                   )}
@@ -163,25 +149,19 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
 function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageTypes }) {
   const isEdit = !!editEntry;
   const accentColor = "#34D399";
-
-  const [name,   setName]   = useState("");
-  const [amount, setAmount] = useState("");
-  const [date,   setDate]   = useState(new Date().toISOString().split("T")[0]);
-  const [type,   setType]   = useState("Stock");
-  const [note,   setNote]   = useState("");
-  const [saving, setSaving] = useState(false);
+  const [name,setName]=useState(""); const [amount,setAmount]=useState("");
+  const [date,setDate]=useState(new Date().toISOString().split("T")[0]);
+  const [type,setType]=useState("Stock"); const [note,setNote]=useState("");
+  const [saving,setSaving]=useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (isEdit) {
-      setName(editEntry.name || "");
-      setAmount(String(editEntry.amount || ""));
+      setName(editEntry.name || ""); setAmount(String(editEntry.amount || ""));
       setDate(editEntry.date || new Date().toISOString().split("T")[0]);
-      setType(editEntry.type || "Stock");
-      setNote(editEntry.note || "");
+      setType(editEntry.type || "Stock"); setNote(editEntry.note || "");
     } else {
-      setName(""); setAmount(""); setNote("");
-      setType("Stock");
+      setName(""); setAmount(""); setNote(""); setType("Stock");
       setDate(new Date().toISOString().split("T")[0]);
     }
     setSaving(false);
@@ -217,7 +197,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
             {isEdit ? "Editing" : "Invest"}
           </span>
         </div>
-
         <div className="px-5 pt-4 pb-4 space-y-3">
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Date</label>
@@ -248,7 +227,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
             </select>
           </div>
         </div>
-
         <div className="flex gap-3 px-5 pb-8">
           <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
           <button onClick={save} disabled={saving} style={{flex:1,padding:"13px",background:saving?"rgba(52,211,153,0.4)":"linear-gradient(135deg,#34D399,#059669)",border:"none",borderRadius:"12px",color:"#022C22",fontWeight:"700",fontSize:"14px",cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
@@ -277,12 +255,14 @@ function MonthCard({mk,entries,onClick,iconMap}){
   );
 }
 
-function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconMap}){
+function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconMap, onTypeClick}){
   const{year,month}=parseKey(mk);
   function shift(dir){let nm=month+dir,ny=year;if(nm<1){nm=12;ny--;}if(nm>12){nm=1;ny++;}onChange(ny+"-"+String(nm).padStart(2,"0"));}
   const entries=investments.filter(e=>mkey(e.date)===mk);
   const total=entries.reduce((s,e)=>s+e.amount,0);
   const grouped=groupByDate(entries);
+  const allTypeNames=Object.keys(iconMap);
+  const byType=allTypeNames.map(t=>({type:t,icon:iconMap[t]||"💡",total:entries.filter(e=>e.type===t).reduce((s,e)=>s+e.amount,0)})).filter(t=>t.total>0).sort((a,b)=>b.total-a.total);
   const navBtn={width:"42px",height:"42px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#E5E7EB",fontSize:"18px",cursor:"pointer",fontFamily:"inherit"};
 
   return(
@@ -309,6 +289,35 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
           </div>
         ))}
       </div>
+
+      {/* ✨ NEW: By Type breakdown — tappable for drill-down */}
+      {byType.length>0&&(
+        <div className="p-4 mb-4" style={{...card}}>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-wider" style={{color:"#4B5563"}}>By Type</p>
+            <span style={{color:"#6B7280",fontSize:"10px",fontStyle:"italic"}}>Tap to view all</span>
+          </div>
+          <div className="space-y-2">
+            {byType.map(({type,icon,total:tt})=>(
+              <button key={type} onClick={()=>onTypeClick(type,icon)}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:"8px",padding:"6px 4px",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",borderRadius:"8px",transition:"background .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(52,211,153,0.04)"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <span style={{fontSize:"14px",width:"20px"}}>{icon}</span>
+                <div style={{flex:1,textAlign:"left"}}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span style={{color:"#9CA3AF"}}>{type}</span>
+                    <span className="font-mono" style={{color:"#34D399"}}>{fmt(tt)} ›</span>
+                  </div>
+                  <div style={{height:"3px",background:"rgba(255,255,255,0.05)",borderRadius:"99px",overflow:"hidden"}}>
+                    <div style={{height:"100%",background:"rgba(52,211,153,0.6)",borderRadius:"99px",width:`${(tt/total)*100}%`}}/>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {grouped.length===0&&(
         <div style={{...card,textAlign:"center",padding:"48px 20px",color:"#4B5563"}}>
@@ -357,6 +366,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   const [panelOpen,   setPanelOpen]   = useState(false);
   const [editEntry,   setEditEntry]   = useState(null);
   const [manageTypes, setManageTypes] = useState(false);
+  const [activeType,  setActiveType]  = useState(null); // ✨ NEW: drill-down state
   const [vis,         setVis]         = useState(false);
 
   useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
@@ -364,24 +374,22 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   const {investments=[], categories=[], addEntry, deleteEntry, loading=false} = firestoreData||{};
   const uid = user?.uid;
 
-  // ✨ NEW: respond to universal +
   useEffect(()=>{
-  if (quickAddTrigger?.type === "investment") {
-    setEditEntry(null);
-    setPanelOpen(true);
-  }
-}, [quickAddTrigger?.ts]);
+    if (quickAddTrigger?.type === "investment") {
+      setEditEntry(null);
+      setPanelOpen(true);
+    }
+  }, [quickAddTrigger?.ts]);
 
-// ✨ NEW: Close panels when leaving this page
-useEffect(() => {
-  return () => {
-    setPanelOpen(false);
-    setManageTypes(false);
-    setEditEntry(null);
-  };
-}, []);
+  useEffect(() => {
+    return () => {
+      setPanelOpen(false);
+      setManageTypes(false);
+      setEditEntry(null);
+      setActiveType(null);
+    };
+  }, []);
 
-  // ✨ Shared types from same Firestore collection
   const allTypes = [
     ...DEFAULT_TYPES.map(name=>({name, icon:ICONS[name]||"💡"})),
     ...categories.map(c=>({name:c.name, icon:c.icon})),
@@ -397,6 +405,11 @@ useEffect(() => {
   function openEdit(entry) { setEditEntry(entry); setPanelOpen(true); }
   function closePanel()    { setPanelOpen(false); setEditEntry(null); }
 
+  // ✨ NEW: Open drill-down for a type
+  function openTypeDetail(typeName, typeIcon) {
+    setActiveType({ name: typeName, icon: typeIcon });
+  }
+
   const handleAdd = useCallback(async(entry)=>{
     await addEntry("investments",entry);
     setActiveMonth(mkey(entry.date));
@@ -411,6 +424,22 @@ useEffect(() => {
       {[1,2,3].map(i=><div key={i} style={{...card,height:"80px",opacity:0.5}}/>)}
     </div>
   );
+
+  // ✨ NEW: If user tapped a type, show CategoryDetail
+  if (activeType) {
+    const typeEntries = investments.filter(e => e.type === activeType.name);
+    return (
+      <CategoryDetail
+        categoryName={activeType.name}
+        categoryIcon={activeType.icon}
+        entries={typeEntries}
+        kind="investments"
+        onBack={() => setActiveType(null)}
+        onEdit={(entry) => { setActiveType(null); openEdit(entry); }}
+        onDelete={handleDelete}
+      />
+    );
+  }
 
   return(
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(10px)",transition:"all .35s ease"}}>
@@ -441,6 +470,47 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* ✨ NEW: All-Time Types section — tap to drill down */}
+        {(() => {
+          const allTypesWithData = allTypes.map(t => ({
+            ...t,
+            total: investments.filter(e => e.type === t.name).reduce((s,e) => s+Number(e.amount), 0),
+            count: investments.filter(e => e.type === t.name).length,
+          })).filter(t => t.count > 0).sort((a,b) => b.total - a.total);
+
+          if (allTypesWithData.length === 0) return null;
+
+          return (
+            <div style={{...card, padding: "16px", marginBottom: "20px"}}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs uppercase tracking-wider font-mono" style={{color:"#6B7280"}}>All-Time Types</p>
+                <span style={{color:"#6B7280",fontSize:"10px",fontStyle:"italic"}}>Tap to drill down</span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
+                {allTypesWithData.slice(0, 8).map(t => (
+                  <button key={t.name} onClick={()=>openTypeDetail(t.name, t.icon)}
+                    style={{
+                      padding:"8px 12px",
+                      background:"rgba(52,211,153,0.06)",
+                      border:"1px solid rgba(52,211,153,0.15)",
+                      borderRadius:"10px",
+                      color:"#E5E7EB",fontSize:"12px",
+                      cursor:"pointer",fontFamily:"inherit",
+                      display:"flex",alignItems:"center",gap:"6px",
+                      transition:"all .15s",
+                    }}
+                    onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.12)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.06)";}}>
+                    <span>{t.icon}</span>
+                    <span>{t.name}</span>
+                    <span style={{color:"#34D399",fontFamily:"monospace",fontWeight:600}}>{fmt(t.total)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{color:"#4B5563"}}>Tap a month to view</p>
         <div className="grid grid-cols-3 gap-3">
           {keys.map(mk=>(
@@ -451,11 +521,12 @@ useEffect(() => {
 
       {activeMonth&&(
         <MonthDetail mk={activeMonth} onChange={setActiveMonth} investments={investments}
-          onBack={()=>setActiveMonth(null)} onDelete={handleDelete} onEdit={openEdit} iconMap={iconMap}/>
+          onBack={()=>setActiveMonth(null)} onDelete={handleDelete} onEdit={openEdit} 
+          iconMap={iconMap} onTypeClick={openTypeDetail}/>
       )}
 
-      {panelOpen   && <EntryPanel        open={panelOpen}   onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)}/>}
-      {manageTypes && <ManageTypesPanel  open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>}
+      {panelOpen   && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)}/>}
+      {manageTypes && <ManageTypesPanel open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>}
     </div>
   );
 }

@@ -6,6 +6,17 @@ import {
 } from "firebase/firestore";
 
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
+function fmtDate(s) { 
+  const d = new Date(s); 
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${String(d.getDate()).padStart(2,"0")} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+function monthsBetween(startStr) {
+  if (!startStr) return 0;
+  const start = new Date(startStr);
+  const now = new Date();
+  return (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+}
 
 const FREQ_OPTIONS = [
   { label: "Monthly",     value: "monthly",     days: 30  },
@@ -41,6 +52,7 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
   const [name,setName]=useState(""); const [amount,setAmount]=useState("");
   const [icon,setIcon]=useState("📺"); const [frequency,setFrequency]=useState("monthly");
   const [customDays,setCustomDays]=useState(""); const [nextRenewal,setNextRenewal]=useState("");
+  const [startDate,setStartDate]=useState(""); // ✨ NEW: Start date
   const [notes,setNotes]=useState(""); const [saving,setSaving]=useState(false);
 
   useEffect(() => {
@@ -50,23 +62,28 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
       setName(editSub.name || ""); setAmount(String(editSub.amount || ""));
       setIcon(editSub.icon || "📺"); setFrequency(editSub.frequency || "monthly");
       setCustomDays(editSub.customDays || ""); setNextRenewal(editSub.nextRenewal || "");
+      setStartDate(editSub.startDate || ""); // ✨ NEW
       setNotes(editSub.notes || "");
     } else {
       setName(""); setAmount(""); setIcon("📺");
       setFrequency("monthly"); setCustomDays(""); setNotes("");
+      const today = new Date();
+      setStartDate(today.toISOString().split("T")[0]); // ✨ Default: today
       const d = new Date(); d.setDate(d.getDate() + 30);
       setNextRenewal(d.toISOString().split("T")[0]);
     }
   }, [open, isEdit, editSub?.id]);
 
   async function save() {
-    if (!name.trim() || !amount || !nextRenewal) return alert("Fill all fields");
+    if (!name.trim() || !amount || !nextRenewal || !startDate) return alert("Fill all fields");
     setSaving(true);
     try {
       const data = {
         name: name.trim(), amount: parseFloat(amount), icon, frequency,
         customDays: frequency === "custom" ? parseInt(customDays) : null,
-        nextRenewal, notes: notes.trim(), active: true, updatedAt: serverTimestamp(),
+        nextRenewal, 
+        startDate, // ✨ NEW: Save start date
+        notes: notes.trim(), active: true, updatedAt: serverTimestamp(),
       };
       if (isEdit) {
         await updateDoc(doc(db, "users", uid, "autopay", editSub.id), data);
@@ -122,6 +139,15 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
               <input type="number" value={customDays} onChange={e=>setCustomDays(e.target.value)} placeholder="e.g. 45" style={inp}/>
             </div>
           )}
+          
+          {/* ✨ NEW: Start Date field */}
+          <div>
+            <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>
+              📅 Started On <span style={{color:"#4B5563", fontWeight:"normal"}}>(when did you subscribe?)</span>
+            </label>
+            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inp}/>
+          </div>
+
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Next Renewal Date</label>
             <input type="date" value={nextRenewal} onChange={e=>setNextRenewal(e.target.value)} style={inp}/>
@@ -143,15 +169,36 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
   );
 }
 
-function RenewedPanel({ open, sub, onClose, onRenew }) {
+// ✨ MODIFIED: Renewed Panel now also auto-adds to Spending
+function RenewedPanel({ open, sub, onClose, onRenew, uid }) {
   const [saving, setSaving] = useState(false);
+  const [alsoAddSpend, setAlsoAddSpend] = useState(true); // ✨ NEW: Default ON
+  
+  useEffect(() => { if (open) setAlsoAddSpend(true); }, [open]);
+  
   if (!sub) return null;
+  
   async function confirm() {
     setSaving(true);
-    try { await onRenew(sub); onClose(); }
+    try { 
+      // ✨ NEW: Add to Spending if checked
+      if (alsoAddSpend && uid) {
+        await addDoc(collection(db, "users", uid, "spendings"), {
+          name: `${sub.icon} ${sub.name}`,
+          amount: Number(sub.amount),
+          date: sub.nextRenewal, // Use the renewal date
+          type: "Other", // Default category — could be improved later
+          note: `Auto-logged from autopay: ${sub.name}`,
+          createdAt: serverTimestamp(),
+        });
+      }
+      await onRenew(sub); 
+      onClose(); 
+    }
     catch(e) { alert(e.message); }
     setSaving(false);
   }
+  
   return (
     <>
       {open && <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose}/>}
@@ -162,7 +209,31 @@ function RenewedPanel({ open, sub, onClose, onRenew }) {
           <div style={{fontSize:"48px",marginBottom:"12px"}}>{sub.icon}</div>
           <p className="text-lg font-bold text-white mb-2">{sub.name} Renewed?</p>
           <p className="text-sm mb-1" style={{color:"#9CA3AF"}}>Amount: <span style={{color:"#34D399",fontWeight:"600"}}>{fmt(sub.amount)}</span></p>
-          <p className="text-sm mb-6" style={{color:"#9CA3AF"}}>Next renewal: <span style={{color:"#E5E7EB",fontWeight:"600"}}>{computeNextRenewal(sub.nextRenewal, sub.frequency, sub.customDays)}</span></p>
+          <p className="text-sm mb-4" style={{color:"#9CA3AF"}}>Next renewal: <span style={{color:"#E5E7EB",fontWeight:"600"}}>{computeNextRenewal(sub.nextRenewal, sub.frequency, sub.customDays)}</span></p>
+          
+          {/* ✨ NEW: Auto-add to Spending toggle */}
+          <label style={{
+            display:"flex", alignItems:"center", gap:"10px",
+            padding:"12px 16px", background:"rgba(248,113,113,0.06)",
+            border:"1px solid rgba(248,113,113,0.15)", borderRadius:"10px",
+            marginBottom:"16px", cursor:"pointer", textAlign:"left",
+          }}>
+            <input 
+              type="checkbox" 
+              checked={alsoAddSpend} 
+              onChange={e=>setAlsoAddSpend(e.target.checked)}
+              style={{width:"16px", height:"16px", accentColor:"#F87171", cursor:"pointer"}}
+            />
+            <div style={{flex:1}}>
+              <p style={{color:"#E5E7EB", fontSize:"12px", fontWeight:"600"}}>
+                💸 Also add to Spending
+              </p>
+              <p style={{color:"#6B7280", fontSize:"11px", marginTop:"2px"}}>
+                Logs {fmt(sub.amount)} as spending entry automatically
+              </p>
+            </div>
+          </label>
+
           <div className="flex gap-3">
             <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
             <button onClick={confirm} disabled={saving} style={{flex:1,padding:"13px",background:saving?"rgba(52,211,153,0.4)":"linear-gradient(135deg,#34D399,#059669)",border:"none",borderRadius:"12px",color:"#022C22",fontWeight:"700",fontSize:"14px",cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
@@ -185,23 +256,21 @@ export default function Autopay({ user, quickAddTrigger }) {
 
   const uid = user?.uid;
 
-  // ✨ NEW: respond to universal +
   useEffect(()=>{
-  if (quickAddTrigger?.type === "autopay") {
-    setEditSub(null);
-    setPanelOpen(true);
-  }
-}, [quickAddTrigger?.ts]);
+    if (quickAddTrigger?.type === "autopay") {
+      setEditSub(null);
+      setPanelOpen(true);
+    }
+  }, [quickAddTrigger?.ts]);
 
-// ✨ NEW: Close panels when leaving this page
-useEffect(() => {
-  return () => {
-    setPanelOpen(false);
-    setEditSub(null);
-    setShowRenewed(false);
-    setRenewedSub(null);
-  };
-}, []);
+  useEffect(() => {
+    return () => {
+      setPanelOpen(false);
+      setEditSub(null);
+      setShowRenewed(false);
+      setRenewedSub(null);
+    };
+  }, []);
 
   useEffect(() => {
     if (!uid) return;
@@ -246,11 +315,18 @@ useEffect(() => {
     return sum + (s.amount / days * 30);
   }, 0);
 
+  // ✨ NEW: Calculate total yearly cost (for top stat)
+  const yearlyTotal = subs.filter(s => s.active).reduce((sum, s) => {
+    const freq = FREQ_OPTIONS.find(f => f.value === s.frequency);
+    const days = freq?.days || s.customDays || 30;
+    return sum + (s.amount / days * 365);
+  }, 0);
+
   return (
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(10px)",transition:"all .35s ease"}}>
       <div className="mb-5">
         <h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>Autopay & Subscriptions</h1>
-        <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>Track renewals, never get surprised</p>
+        <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>Track renewals · Never get surprised</p>
       </div>
 
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -266,6 +342,28 @@ useEffect(() => {
           </div>
         ))}
       </div>
+
+      {/* ✨ NEW: Yearly cost insight banner */}
+      {yearlyTotal > 0 && (
+        <div style={{
+          ...card,
+          padding:"12px 16px", marginBottom:"16px",
+          background:"linear-gradient(135deg, rgba(248,113,113,0.06), rgba(251,191,36,0.04))",
+          border:"1px solid rgba(248,113,113,0.15)",
+        }}>
+          <div style={{display:"flex", alignItems:"center", gap:"10px"}}>
+            <span style={{fontSize:"22px"}}>📊</span>
+            <div style={{flex:1}}>
+              <p style={{color:"#E5E7EB", fontSize:"12px", fontWeight:600, marginBottom:"2px"}}>
+                Yearly Cost: <span style={{color:"#F87171", fontWeight:700}}>{fmt(Math.round(yearlyTotal))}</span>
+              </p>
+              <p style={{color:"#6B7280", fontSize:"11px"}}>
+                You spend this much per year on active subscriptions
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-4">
         {[["all","All"],["upcoming","Upcoming"],["active","Active"]].map(([id,label])=>(
@@ -300,6 +398,14 @@ useEffect(() => {
             const statusColor = isOverdue?"#F87171":isUrgent?"#F87171":isWarning?"#FBBF24":"#34D399";
             const borderColor = isOverdue?"rgba(248,113,113,0.25)":isUrgent?"rgba(248,113,113,0.2)":isWarning?"rgba(251,191,36,0.15)":"rgba(255,255,255,0.06)";
 
+            // ✨ NEW: Calculate how long active + total spent so far
+            const monthsActive = sub.startDate ? monthsBetween(sub.startDate) : 0;
+            const freq = FREQ_OPTIONS.find(f => f.value === sub.frequency);
+            const renewalsPerYear = freq?.days ? Math.floor(365 / freq.days) : 12;
+            const renewalsSoFar = sub.startDate ? Math.floor(monthsActive * renewalsPerYear / 12) : 0;
+            const totalSpentSoFar = renewalsSoFar * Number(sub.amount);
+            const yearlyCost = (sub.amount / (freq?.days || 30)) * 365;
+
             return (
               <div key={sub.id} style={{...card,padding:"16px",border:`1px solid ${borderColor}`,opacity:sub.active?1:0.5}}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"12px"}}>
@@ -318,10 +424,36 @@ useEffect(() => {
                       {isOverdue ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? "Due today!" : `${daysLeft}d left`}
                     </p>
                     <p style={{color:"#4B5563",fontSize:"10px",fontFamily:"monospace"}}>
-                      {new Date(sub.nextRenewal).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
+                      {fmtDate(sub.nextRenewal)}
                     </p>
                   </div>
                 </div>
+
+                {/* ✨ NEW: Start date + total spent info */}
+                {sub.startDate && (
+                  <div style={{
+                    marginTop:"10px", padding:"8px 12px",
+                    background:"rgba(255,255,255,0.02)",
+                    border:"1px solid rgba(255,255,255,0.04)",
+                    borderRadius:"8px",
+                    display:"flex", justifyContent:"space-between", alignItems:"center",
+                    fontSize:"10px", fontFamily:"monospace",
+                  }}>
+                    <span style={{color:"#6B7280"}}>📅 Since {fmtDate(sub.startDate)}</span>
+                    {monthsActive > 0 && (
+                      <span style={{color:"#9CA3AF"}}>
+                        Spent so far: <span style={{color:"#F87171", fontWeight:600}}>{fmt(totalSpentSoFar)}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* ✨ NEW: Yearly cost framing (psychological trick) */}
+                {sub.active && (
+                  <p style={{color:"#FBBF24", fontSize:"10px", fontStyle:"italic", marginTop:"6px", textAlign:"center"}}>
+                    ≈ {fmt(Math.round(yearlyCost))}/year
+                  </p>
+                )}
 
                 {(isUrgent || isOverdue) && sub.active && (
                   <div style={{marginTop:"12px",padding:"10px 14px",borderRadius:"10px",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)"}}>
@@ -356,8 +488,8 @@ useEffect(() => {
         </div>
       )}
 
-      {panelOpen   && <AutopayPanel open={panelOpen} onClose={closePanel} uid={uid} editSub={editSub}/>}
-      {showRenewed && <RenewedPanel open={showRenewed} sub={renewedSub} onClose={()=>{setShowRenewed(false);setRenewedSub(null);}} onRenew={markRenewed}/>}
+      {panelOpen   && <AutopayPanel open={panelOpen}   onClose={closePanel} uid={uid} editSub={editSub}/>}
+      {showRenewed && <RenewedPanel open={showRenewed} sub={renewedSub} onClose={()=>{setShowRenewed(false);setRenewedSub(null);}} onRenew={markRenewed} uid={uid}/>}
     </div>
   );
 }
