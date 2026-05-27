@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { db } from "../firebase/config";
 import { collection, onSnapshot } from "firebase/firestore";
+import PersonalityCard from "../components/PersonalityCard";
 
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
 function mkey(d) { const dt = new Date(d); return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0"); }
@@ -33,7 +34,7 @@ function computeStreak(investments, spendings) {
   return streak;
 }
 
-// ✨ FIXED: All badges with locked/unlocked state
+// All badges with locked/unlocked state
 function getAllBadges(investments, spendings, totalInvested, netBalance, streak) {
   return [
     { icon:"🌱", label:"First Investment", desc:"Add your first investment",     unlocked: investments.length >= 1,  goal: investments.length, target: 1 },
@@ -66,11 +67,12 @@ export default function Home({ navigate, firestoreData, user }) {
     return () => unsub();
   }, [uid]);
 
-  const { investments=[], spendings=[], categories=[], totalInvested=0, totalSpent=0, netBalance=0, loading=false } = firestoreData || {};
+  const { investments=[], spendings=[], categories=[], customCategories=[], totalInvested=0, totalSpent=0, netBalance=0, loading=false } = firestoreData || {};
 
-  // ✨ FIXED: Build full icon map from defaults + custom categories
+  // Build full icon map from defaults + custom categories (legacy + new)
   const iconMap = { ...TYPE_ICON };
   categories.forEach(c => { iconMap[c.name] = c.icon; });
+  customCategories.forEach(c => { iconMap[c.name] = c.icon; });
 
   const now     = new Date();
   const cm      = mkey(now.toISOString());
@@ -88,7 +90,7 @@ export default function Home({ navigate, firestoreData, user }) {
   const allBadges = getAllBadges(investments, spendings, totalInvested, netBalance, streak);
   const earnedCount = allBadges.filter(b=>b.unlocked).length;
 
-  // ✨ NEW: Detect new users
+  // Detect new users
   const isNewUser = investments.length === 0 && spendings.length === 0 && autopayList.length === 0;
 
   const reminders = autopayList.filter(sub => {
@@ -115,7 +117,7 @@ export default function Home({ navigate, firestoreData, user }) {
         </h1>
       </div>
 
-      {/* ✨ NEW: Onboarding card for new users */}
+      {/* Onboarding card for new users */}
       {isNewUser && (
         <div className="p-5 mb-4 relative overflow-hidden" style={{
           background:"linear-gradient(135deg, rgba(52,211,153,0.08), rgba(251,191,36,0.05))",
@@ -142,7 +144,7 @@ export default function Home({ navigate, firestoreData, user }) {
         </div>
       )}
 
-      {/* ── AUTOPAY REMINDER BANNERS ── */}
+      {/* ─── AUTOPAY REMINDER BANNERS ─── */}
       {reminders.length > 0 && (
         <div className="mb-5 space-y-2">
           {reminders.map(sub => {
@@ -184,7 +186,16 @@ export default function Home({ navigate, firestoreData, user }) {
         </div>
       )}
 
-      {/* ── ✨ FIXED: BALANCE HERO — "Net Savings" ── */}
+      {/* ✨ NEW v1.5: PERSONALITY CARD */}
+      {!isNewUser && (
+        <PersonalityCard 
+          firestoreData={firestoreData}
+          autopayList={autopayList}
+          user={user}
+        />
+      )}
+
+      {/* ── BALANCE HERO — "Net Savings" ── */}
       <div className="p-6 mb-4 relative overflow-hidden" style={{...card}}>
         <div style={{position:"absolute",top:"-50px",right:"-50px",width:"180px",height:"180px",borderRadius:"50%",background:isPos?"radial-gradient(circle,rgba(52,211,153,0.12),transparent 70%)":"radial-gradient(circle,rgba(248,113,113,0.12),transparent 70%)",pointerEvents:"none"}}/>
         <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>Net Savings</p>
@@ -222,7 +233,7 @@ export default function Home({ navigate, firestoreData, user }) {
         ))}
       </div>
 
-      {/* ── ✨ FIXED: STREAK + BADGES (locked + unlocked) ── */}
+      {/* ── STREAK + BADGES (locked + unlocked) ── */}
       <div className="p-5 mb-4" style={{...card}}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -280,7 +291,7 @@ export default function Home({ navigate, firestoreData, user }) {
         </p>
       </div>
 
-      {/* ── ✨ FIXED: RECENT ACTIVITY (real category icons) ── */}
+      {/* ── RECENT ACTIVITY (real category icons) ── */}
       <div className="overflow-hidden" style={{...card}}>
         <div className="flex items-center justify-between px-5 py-4" style={{borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
           <div className="flex items-center gap-2">

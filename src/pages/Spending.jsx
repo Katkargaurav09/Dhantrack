@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { db } from "../firebase/config";
-import { doc, updateDoc, collection, addDoc, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, collection, addDoc } from "firebase/firestore";
 import CategoryDetail from "./CategoryDetail";
+import CustomCategoryPanel from "../components/CustomCategoryPanel";
+import { suggestCategory, extractMerchant } from "../utils/keywordMap";
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DEFAULT_CATS=["Food","Travel","Shopping","Entertainment","Course","Electronics","Health","Utilities","Rent","Fuel","Other"];
@@ -20,7 +22,7 @@ const selectStyle = { ...inp, background:"#0F172A", appearance:"none", WebkitApp
 
 function Pencil(){return(<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>);}
 
-// ── Manage Categories Panel ────────────────────────────────────
+// ── Manage Categories Panel (legacy v1.4 — quick add small categories) ────
 function ManageCatsPanel({ open, onClose, uid, customCats }) {
   const [newCat,    setNewCat]    = useState("");
   const [newIcon,   setNewIcon]   = useState("💡");
@@ -70,10 +72,13 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
         <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
           <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
-          <h3 className="font-bold text-white text-base">🏷️ Manage Categories</h3>
+          <h3 className="font-bold text-white text-base">🏷️ Quick Categories</h3>
         </div>
         <div className="px-5 pt-4 pb-2">
-          <p className="text-xs uppercase tracking-wider mb-3" style={{color:"#6B7280"}}>Add New Category</p>
+          <p className="text-xs uppercase tracking-wider mb-3" style={{color:"#6B7280"}}>Add New Quick Category</p>
+          <p style={{color:"#6B7280",fontSize:"11px",marginBottom:"12px",lineHeight:"1.5"}}>
+            💡 For project-style categories (Puri Trip, Domain), use "Create Custom Category" instead.
+          </p>
           <div className="mb-3">
             <label className="text-xs block mb-2" style={{color:"#6B7280"}}>Pick an icon</label>
             <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
@@ -87,7 +92,7 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
           </div>
           <div className="flex gap-2 mb-5">
             <input type="text" value={newCat} onChange={e=>setNewCat(e.target.value)}
-              placeholder="Category name e.g. Gym, Coffee..." style={{...inp,flex:1}}
+              placeholder="e.g. Gym, Coffee, Pet..." style={{...inp,flex:1}}
               onKeyDown={e=>e.key==="Enter"&&addCat()}/>
             <button onClick={addCat} disabled={saving}
               style={{padding:"0 18px",background:"linear-gradient(135deg,#F87171,#ef4444)",border:"none",borderRadius:"12px",color:"#fff",fontWeight:"700",fontSize:"14px",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
@@ -103,11 +108,10 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
             ))}
           </div>
           {customCats.length > 0 && (<>
-            <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Your Categories</p>
+            <p className="text-xs uppercase tracking-wider mb-2" style={{color:"#6B7280"}}>Your Quick Categories</p>
             <div className="space-y-2 mb-6">
               {customCats.map(c=>(
-                <div key={c.id} className="px-4 py-3 rounded-xl"
-                  style={{background:"rgba(248,113,113,0.06)",border:"1px solid rgba(248,113,113,0.15)"}}>
+                <div key={c.id} className="px-4 py-3 rounded-xl" style={{background:"rgba(248,113,113,0.06)",border:"1px solid rgba(248,113,113,0.15)"}}>
                   {editingId === c.id ? (
                     <div>
                       <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"8px"}}>
@@ -147,14 +151,16 @@ function ManageCatsPanel({ open, onClose, uid, customCats }) {
   );
 }
 
-// ── Entry Panel ────────────────────────────────────────────────
-function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCats }) {
+// ── Entry Panel (✨ NOW with Smart Auto-Categorization) ──
+function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCats, learnedCategories, learnCategory, spendings }) {
   const isEdit = !!editEntry;
   const accentColor = "#F87171";
   const [name,setName]=useState(""); const [amount,setAmount]=useState("");
   const [date,setDate]=useState(new Date().toISOString().split("T")[0]);
   const [type,setType]=useState("Food"); const [note,setNote]=useState("");
   const [saving,setSaving]=useState(false);
+  const [suggestion, setSuggestion] = useState(null); // ✨ NEW: auto-suggestion
+  const [userPickedManually, setUserPickedManually] = useState(false); // ✨ NEW
 
   useEffect(() => {
     if (!open) return;
@@ -166,8 +172,45 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
       setName(""); setAmount(""); setNote(""); setType("Food");
       setDate(new Date().toISOString().split("T")[0]);
     }
+    setSuggestion(null);
+    setUserPickedManually(false);
     setSaving(false);
   }, [open, isEdit, editEntry?.id]);
+
+  // ✨ NEW: Auto-suggest category when name changes
+  useEffect(() => {
+    if (!name.trim() || name.length < 2 || isEdit) {
+      setSuggestion(null);
+      return;
+    }
+    if (userPickedManually) return; // Don't override user's choice
+
+    const result = suggestCategory(name, "spending", learnedCategories || {});
+    if (result && result.category && result.category !== type) {
+      // Only suggest if it's a valid category
+      const validCats = allCats.map(c => c.name);
+      if (validCats.includes(result.category)) {
+        setSuggestion(result);
+      } else {
+        setSuggestion(null);
+      }
+    } else {
+      setSuggestion(null);
+    }
+  }, [name, learnedCategories, allCats, type, userPickedManually, isEdit]);
+
+  function applySuggestion() {
+    if (suggestion) {
+      setType(suggestion.category);
+      setSuggestion(null);
+    }
+  }
+
+  function handleTypeChange(newType) {
+    setType(newType);
+    setUserPickedManually(true);
+    setSuggestion(null);
+  }
 
   async function save() {
     if (!name.trim() || !amount || !date) return alert("Fill all fields");
@@ -179,6 +222,19 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
         });
       } else {
         await onSave({ name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim() });
+
+        // ✨ NEW: Learn the mapping if user has used same merchant+category 3+ times
+        if (learnCategory && name.trim().length >= 3) {
+          const merchant = extractMerchant(name);
+          if (merchant && merchant.length >= 3) {
+            const sameMatches = (spendings || []).filter(s => 
+              s.name && s.name.toLowerCase().includes(merchant) && s.type === type
+            );
+            if (sameMatches.length >= 2) { // 2 + this new one = 3
+              learnCategory(merchant, type);
+            }
+          }
+        }
       }
       onClose();
     } catch (e) { alert("Failed: " + e.message); }
@@ -211,6 +267,33 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Name</label>
             <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Zomato Dinner" style={inp}/>
+            
+            {/* ✨ NEW: Auto-suggestion banner */}
+            {suggestion && !isEdit && (
+              <button onClick={applySuggestion} style={{
+                width:"100%",
+                marginTop:"8px",
+                padding:"10px 12px",
+                background:"rgba(52,211,153,0.08)",
+                border:"1px solid rgba(52,211,153,0.25)",
+                borderRadius:"10px",
+                color:"#34D399",
+                fontSize:"12px",
+                cursor:"pointer",
+                fontFamily:"inherit",
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"space-between",
+                gap:"8px",
+                textAlign:"left",
+              }}>
+                <span>
+                  💡 Suggested: <strong>{ICONS[suggestion.category] || allCats.find(c=>c.name===suggestion.category)?.icon || "💡"} {suggestion.category}</strong>
+                  {suggestion.source === "learned" && <span style={{color:"#9CA3AF",fontSize:"10px",marginLeft:"4px"}}>(from history)</span>}
+                </span>
+                <span style={{fontSize:"11px",fontWeight:"700"}}>Apply →</span>
+              </button>
+            )}
           </div>
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Note (optional)</label>
@@ -221,10 +304,10 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allCats, onManageCa
               <label className="text-xs uppercase tracking-wider" style={{color:"#6B7280"}}>Category</label>
               <button onClick={()=>{onClose();onManageCats();}}
                 style={{display:"flex",alignItems:"center",gap:"5px",color:"#F87171",background:"none",border:"none",cursor:"pointer",fontSize:"11px",fontWeight:"600",fontFamily:"inherit"}}>
-                + Add Category
+                + Add Quick Category
               </button>
             </div>
-            <select value={type} onChange={e=>setType(e.target.value)} style={selectStyle}>
+            <select value={type} onChange={e=>handleTypeChange(e.target.value)} style={selectStyle}>
               {allCats.map(c=><option key={c.name} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal",fontWeight:"normal"}}>{c.icon} {c.name}</option>)}
             </select>
           </div>
@@ -292,7 +375,6 @@ function MonthDetail({mk,onChange,spendings,onBack,onDelete,onEdit,iconMap,onCat
         ))}
       </div>
 
-      {/* ✨ MODIFIED: By Category rows are now TAPPABLE → opens drill-down */}
       {byCat.length>0&&(
         <div className="p-4 mb-4" style={{...card}}>
           <div className="flex items-center justify-between mb-3">
@@ -367,12 +449,14 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
   const [panelOpen,      setPanelOpen]      = useState(false);
   const [editEntry,      setEditEntry]      = useState(null);
   const [manageCats,     setManageCats]     = useState(false);
-  const [activeCategory, setActiveCategory] = useState(null); // ✨ NEW: drill-down state
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [showCustomPanel,setShowCustomPanel]= useState(false);  // ✨ NEW: Create custom category
+  const [activeCustom,   setActiveCustom]   = useState(null);   // ✨ NEW: Active custom category detail
   const [vis,            setVis]            = useState(false);
 
   useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
 
-  const {spendings=[], categories=[], addEntry, deleteEntry, loading=false} = firestoreData||{};
+  const {spendings=[], categories=[], customCategories=[], learnedCategories={}, addEntry, deleteEntry, learnCategory, loading=false} = firestoreData||{};
   const uid = user?.uid;
 
   useEffect(()=>{
@@ -388,16 +472,24 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
       setManageCats(false);
       setEditEntry(null);
       setActiveCategory(null);
+      setShowCustomPanel(false);
+      setActiveCustom(null);
     };
   }, []);
 
+  // ✨ NEW: Filter custom categories — only show "spending" kind
+  // Old "categories" (no kind field) show in BOTH pages until user assigns kind
+  const spendingCustomCats = customCategories.filter(c => c.kind === "spending");
+  const legacyCats = categories; // shared between pages until user migrates
+
   const allCats = [
     ...DEFAULT_CATS.map(name=>({name, icon:ICONS[name]||"💡"})),
-    ...categories.map(c=>({name:c.name, icon:c.icon})),
+    ...legacyCats.map(c=>({name:c.name, icon:c.icon})),
   ];
 
   const iconMap = {};
   allCats.forEach(c=>{ iconMap[c.name]=c.icon; });
+  spendingCustomCats.forEach(c=>{ iconMap[c.name]=c.icon; });
 
   const year = new Date().getFullYear();
   const keys = buildKeys(year);
@@ -406,9 +498,13 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
   function openEdit(entry) { setEditEntry(entry); setPanelOpen(true); }
   function closePanel()    { setPanelOpen(false); setEditEntry(null); }
 
-  // ✨ NEW: Open drill-down for a category
   function openCategoryDetail(catName, catIcon) {
     setActiveCategory({ name: catName, icon: catIcon });
+  }
+
+  // ✨ NEW: Open custom category detail
+  function openCustomDetail(customCat) {
+    setActiveCustom(customCat);
   }
 
   const handleAdd = useCallback(async(entry)=>{
@@ -426,7 +522,7 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
     </div>
   );
 
-  // ✨ NEW: If user tapped a category, show CategoryDetail
+  // Drill-down for normal categories
   if (activeCategory) {
     const categoryEntries = spendings.filter(e => e.type === activeCategory.name);
     return (
@@ -437,6 +533,24 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
         kind="spending"
         onBack={() => setActiveCategory(null)}
         onEdit={(entry) => { setActiveCategory(null); openEdit(entry); }}
+        onDelete={handleDelete}
+      />
+    );
+  }
+
+  // ✨ NEW: Drill-down for custom categories (using customTags)
+  if (activeCustom) {
+    const customEntries = spendings.filter(e => 
+      Array.isArray(e.customTags) && e.customTags.includes(activeCustom.id)
+    );
+    return (
+      <CategoryDetail
+        categoryName={activeCustom.name}
+        categoryIcon={activeCustom.icon}
+        entries={customEntries}
+        kind="spending"
+        onBack={() => setActiveCustom(null)}
+        onEdit={(entry) => { setActiveCustom(null); openEdit(entry); }}
         onDelete={handleDelete}
       />
     );
@@ -471,7 +585,78 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
           </div>
         </div>
 
-        {/* ✨ NEW: Quick category access from main page */}
+        {/* ✨ NEW v1.5: Custom Categories (Project-style — Puri Trip, Domain) */}
+        <div style={{...card, padding:"16px", marginBottom:"20px"}}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-sm font-bold" style={{color:"#E5E7EB"}}>🎯 Custom Categories</p>
+              <p className="text-xs" style={{color:"#6B7280", marginTop:"2px"}}>Trips, projects, anything you want to track</p>
+            </div>
+            <button onClick={()=>setShowCustomPanel(true)}
+              style={{
+                padding:"6px 12px",
+                background:"linear-gradient(135deg,#F87171,#ef4444)",
+                border:"none",
+                borderRadius:"10px",
+                color:"#fff",
+                fontSize:"11px",
+                fontWeight:"700",
+                cursor:"pointer",
+                fontFamily:"inherit",
+              }}>
+              + Create
+            </button>
+          </div>
+
+          {spendingCustomCats.length === 0 ? (
+            <div style={{
+              padding:"16px",
+              background:"rgba(248,113,113,0.04)",
+              border:"1px dashed rgba(248,113,113,0.2)",
+              borderRadius:"10px",
+              textAlign:"center",
+            }}>
+              <p style={{color:"#9CA3AF",fontSize:"12px",marginBottom:"4px"}}>
+                Create your first custom category!
+              </p>
+              <p style={{color:"#6B7280",fontSize:"10px",lineHeight:"1.5"}}>
+                Examples: "Puri Trip" (7-day trip), "Domain" (ongoing), "Wedding" (event)
+              </p>
+            </div>
+          ) : (
+            <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
+              {spendingCustomCats.map(cat => {
+                const entries = spendings.filter(e => Array.isArray(e.customTags) && e.customTags.includes(cat.id));
+                const total = entries.reduce((s,e) => s + Number(e.amount), 0);
+                return (
+                  <button key={cat.id} onClick={() => openCustomDetail(cat)}
+                    style={{
+                      padding:"10px 14px",
+                      background:"rgba(248,113,113,0.08)",
+                      border:"1px solid rgba(248,113,113,0.2)",
+                      borderRadius:"10px",
+                      color:"#E5E7EB",
+                      fontSize:"12px",
+                      cursor:"pointer",
+                      fontFamily:"inherit",
+                      display:"flex",
+                      flexDirection:"column",
+                      alignItems:"flex-start",
+                      gap:"4px",
+                      minWidth:"140px",
+                    }}>
+                    <span style={{fontSize:"18px"}}>{cat.icon}</span>
+                    <span style={{fontWeight:"600"}}>{cat.name}</span>
+                    <span style={{color:"#F87171",fontFamily:"monospace",fontWeight:"700"}}>{fmt(total)}</span>
+                    <span style={{color:"#6B7280",fontSize:"10px"}}>{entries.length} {entries.length===1?"entry":"entries"}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* All-Time Categories (default + legacy custom) */}
         {(() => {
           const allCatsWithSpend = allCats.map(c => ({
             ...c,
@@ -526,8 +711,9 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
           iconMap={iconMap} onCategoryClick={openCategoryDetail}/>
       )}
 
-      {panelOpen  && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allCats={allCats} onManageCats={()=>setManageCats(true)}/>}
+      {panelOpen  && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allCats={allCats} onManageCats={()=>setManageCats(true)} learnedCategories={learnedCategories} learnCategory={learnCategory} spendings={spendings}/>}
       {manageCats && <ManageCatsPanel open={manageCats} onClose={()=>setManageCats(false)} uid={uid} customCats={categories}/>}
+      {showCustomPanel && <CustomCategoryPanel open={showCustomPanel} onClose={()=>setShowCustomPanel(false)} uid={uid} kind="spending" spendings={spendings}/>}
     </div>
   );
 }

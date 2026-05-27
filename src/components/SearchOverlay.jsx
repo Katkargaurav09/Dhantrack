@@ -54,7 +54,8 @@ export default function SearchOverlay({ firestoreData, user, onClose, onNavigate
   const [autopayList, setAutopayList] = useState([]);
   const inputRef = useRef(null);
 
-  const { investments = [], spendings = [] } = firestoreData || {};
+  // ✨ NEW: Pull customCategories from firestoreData
+  const { investments = [], spendings = [], customCategories = [] } = firestoreData || {};
 
   // Auto-focus input when opened
   useEffect(() => {
@@ -89,14 +90,14 @@ export default function SearchOverlay({ firestoreData, user, onClose, onNavigate
         saveRecentSearch(query.trim());
         setRecentSearches(getRecentSearches());
       }
-    }, 1500); // Save after 1.5s of no typing
+    }, 1500);
     return () => clearTimeout(timer);
   }, [query]);
 
   // Search logic — searches across all data
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return { spendings: [], investments: [], autopay: [], total: 0, totalAmount: 0 };
+    if (!q) return { spendings: [], investments: [], autopay: [], customCats: [], total: 0, totalAmount: 0 };
 
     const matchEntry = (entry) => {
       const fields = [
@@ -104,29 +105,53 @@ export default function SearchOverlay({ firestoreData, user, onClose, onNavigate
         String(entry.note || ""),
         String(entry.notes || ""),
         String(entry.type || ""),
+        String(entry.category || ""),    // ✨ NEW: for autopay category
         String(entry.amount || ""),
         fmtDate(entry.date || entry.nextRenewal || "").toLowerCase(),
       ].join(" ").toLowerCase();
       return fields.includes(q);
     };
 
-    const matchedSpendings = spendings.filter(matchEntry);
+    // ✨ NEW: Match custom categories
+    const matchCustomCat = (cat) => {
+      const fields = [
+        String(cat.name || ""),
+        String(cat.kind || ""),
+      ].join(" ").toLowerCase();
+      return fields.includes(q);
+    };
+
+    const matchedSpendings   = spendings.filter(matchEntry);
     const matchedInvestments = investments.filter(matchEntry);
-    const matchedAutopay = autopayList.filter(matchEntry);
+    const matchedAutopay     = autopayList.filter(matchEntry);
+    const matchedCustomCats  = customCategories.filter(matchCustomCat);  // ✨ NEW
+
+    // ✨ NEW: Also include entries that are tagged with matching custom categories
+    const customCatIds = matchedCustomCats.map(c => c.id);
+    const customCatTaggedSpendings = spendings.filter(s => 
+      Array.isArray(s.customTags) && s.customTags.some(t => customCatIds.includes(t)) && !matchedSpendings.find(m => m.id === s.id)
+    );
+    const customCatTaggedInvestments = investments.filter(i => 
+      Array.isArray(i.customTags) && i.customTags.some(t => customCatIds.includes(t)) && !matchedInvestments.find(m => m.id === i.id)
+    );
+
+    const allSpendings = [...matchedSpendings, ...customCatTaggedSpendings];
+    const allInvestments = [...matchedInvestments, ...customCatTaggedInvestments];
 
     const totalAmount = 
-      matchedSpendings.reduce((s, e) => s + (Number(e.amount) || 0), 0) +
-      matchedInvestments.reduce((s, e) => s + (Number(e.amount) || 0), 0) +
+      allSpendings.reduce((s, e) => s + (Number(e.amount) || 0), 0) +
+      allInvestments.reduce((s, e) => s + (Number(e.amount) || 0), 0) +
       matchedAutopay.reduce((s, e) => s + (Number(e.amount) || 0), 0);
 
     return {
-      spendings: matchedSpendings,
-      investments: matchedInvestments,
-      autopay: matchedAutopay,
-      total: matchedSpendings.length + matchedInvestments.length + matchedAutopay.length,
+      spendings:   allSpendings,
+      investments: allInvestments,
+      autopay:     matchedAutopay,
+      customCats:  matchedCustomCats,  // ✨ NEW
+      total:       allSpendings.length + allInvestments.length + matchedAutopay.length + matchedCustomCats.length,
       totalAmount,
     };
-  }, [query, spendings, investments, autopayList]);
+  }, [query, spendings, investments, autopayList, customCategories]);
 
   function handleRecentClick(search) {
     setQuery(search);
@@ -186,6 +211,73 @@ export default function SearchOverlay({ firestoreData, user, onClose, onNavigate
     </button>
   );
 
+  // ✨ NEW: Custom Category result card
+  const CustomCatCard = ({ cat }) => {
+    const kindColor = cat.kind === "investment" ? "#34D399" : "#F87171";
+    const targetPage = cat.kind === "investment" ? "investments" : "spending";
+    
+    // Count entries linked to this category
+    const linkedEntries = cat.kind === "investment"
+      ? investments.filter(i => Array.isArray(i.customTags) && i.customTags.includes(cat.id))
+      : spendings.filter(s => Array.isArray(s.customTags) && s.customTags.includes(cat.id));
+    const totalAmt = linkedEntries.reduce((sum, e) => sum + Number(e.amount), 0);
+
+    return (
+      <button
+        onClick={() => handleResultClick(targetPage)}
+        style={{
+          width: "100%",
+          background: `${kindColor}08`,
+          border: `1px solid ${kindColor}25`,
+          borderRadius: "12px",
+          padding: "12px 14px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          cursor: "pointer",
+          marginBottom: "8px",
+          textAlign: "left",
+          fontFamily: "inherit",
+          transition: "all .15s",
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = `${kindColor}15`; }}
+        onMouseLeave={e => { e.currentTarget.style.background = `${kindColor}08`; }}
+      >
+        <div style={{
+          width: "36px", height: "36px", borderRadius: "10px",
+          background: `${kindColor}15`,
+          border: `1px solid ${kindColor}30`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0, fontSize: "16px",
+        }}>{cat.icon || "🎯"}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+            <p style={{ color: "#E5E7EB", fontSize: "14px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <HighlightText text={cat.name} query={query}/>
+            </p>
+            <span style={{
+              padding:"1px 6px",
+              background: `${kindColor}12`,
+              border: `1px solid ${kindColor}25`,
+              borderRadius:"6px",
+              color: kindColor,
+              fontSize:"9px",
+              fontWeight:"700",
+            }}>
+              {cat.kind === "investment" ? "📈 INV" : "💸 SPD"}
+            </span>
+          </div>
+          <p style={{ color: "#6B7280", fontSize: "11px", fontFamily: "monospace", marginTop: "2px" }}>
+            Custom Category · {linkedEntries.length} {linkedEntries.length === 1 ? "entry" : "entries"}
+          </p>
+        </div>
+        <p style={{ color: kindColor, fontSize: "14px", fontWeight: 700, fontFamily: "monospace", flexShrink: 0 }}>
+          {fmt(totalAmt)}
+        </p>
+      </button>
+    );
+  };
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 100,
@@ -228,7 +320,7 @@ export default function SearchOverlay({ firestoreData, user, onClose, onNavigate
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search by name, note, amount, or date..."
+            placeholder="Search by name, note, amount, category..."
             style={{
               width: "100%",
               background: "rgba(255,255,255,0.05)",
@@ -299,12 +391,13 @@ export default function SearchOverlay({ firestoreData, user, onClose, onNavigate
                 Search across all your data
               </p>
               <p style={{ color: "#6B7280", fontSize: "12px", lineHeight: 1.5 }}>
-                Find entries by name (Swiggy), note (Goa trip), amount (5000), category (Food), or date (May 2026)
+                Find entries by name (Swiggy), note (Goa trip), amount (5000), category (Food), or custom category (Puri Trip)
               </p>
               <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "14px", flexWrap: "wrap" }}>
                 <span style={{ padding: "4px 10px", background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "12px", color: "#F87171", fontSize: "11px" }}>💸 Spending</span>
                 <span style={{ padding: "4px 10px", background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: "12px", color: "#34D399", fontSize: "11px" }}>📈 Investments</span>
                 <span style={{ padding: "4px 10px", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", borderRadius: "12px", color: "#8B5CF6", fontSize: "11px" }}>🔔 Autopay</span>
+                <span style={{ padding: "4px 10px", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: "12px", color: "#FBBF24", fontSize: "11px" }}>🎯 Custom</span>
               </div>
             </div>
           </div>
@@ -339,6 +432,21 @@ export default function SearchOverlay({ firestoreData, user, onClose, onNavigate
               <div style={{ textAlign: "center", padding: "40px 20px", color: "#4B5563" }}>
                 <p style={{ fontSize: "14px", marginBottom: "8px" }}>Nothing matches "<span style={{ color: "#9CA3AF" }}>{query}</span>"</p>
                 <p style={{ fontSize: "12px" }}>Try a different keyword or check your spelling</p>
+              </div>
+            )}
+
+            {/* ✨ NEW: Custom Categories (show FIRST if any) */}
+            {results.customCats.length > 0 && (
+              <div style={{ marginBottom: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+                  <span style={{ fontSize: "14px" }}>🎯</span>
+                  <p style={{ color: "#FBBF24", fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    Custom Categories ({results.customCats.length})
+                  </p>
+                </div>
+                {results.customCats.map(cat => (
+                  <CustomCatCard key={`cc-${cat.id}`} cat={cat}/>
+                ))}
               </div>
             )}
 
