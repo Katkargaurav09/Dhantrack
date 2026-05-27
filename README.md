@@ -1,137 +1,145 @@
-# 💰 DhanTrack — Personal Finance Manager
+---
 
-> Track your investments, monitor spending, and visualize your net balance — all in one place.
+## 📅 Version History
 
-🌐 **Live Demo:** [dhantrack-one.vercel.app](https://dhantrack-one.vercel.app)
+### v1.5 (Current) — Power User Features
+- 🎯 **Custom Category Groups** — Project-style tracking
+- 🤖 **Smart Auto-Categorization** — Learns your habits
+- ✨ **Spending Personality** — 12 personality types + viral share
+- 🐛 Autopay: Spending vs Investment selector
+- 🐛 Fixed custom category collision bug
+
+### v1.4 — Foundation Features
+- 🔍 Global Search across all data
+- 📊 Category Drill-Down with yearly/monthly views
+- 💸 Spending Pool ("₹X for Y days" tracker)
+- 🔔 Autopay Start Date + yearly cost framing
+- 🔄 Auto-add to Spending on autopay renewal
+- 🐛 Fixed ghost panel rendering issues
+
+### v1.3 — Subscriptions & Goals
+- 🔔 Autopay & Subscriptions tracker
+- 🎯 Budget Goals & Savings Goals
+- 🏆 Streak tracking with badges
+- 🆕 New user onboarding
+
+### v1.2 — Monthly Views
+- 📊 Monthly grid for spending & investments
+- 🎨 Custom categories with icons
+- 🔧 Edit/delete entries
+
+### v1.1 — Authentication
+- 🔐 Google Sign-In
+- ☁️ Firestore data sync
+- 📱 Mobile-responsive design
+
+### v1.0 — Initial Release
+- 💸 Basic spending tracker
+- 📈 Basic investment tracker
+- 💰 Net balance calculation
 
 ---
 
-## ✨ Features
+## 🗺️ Roadmap
 
-| Feature | Description |
-|---|---|
-| 📈 Investment Tracking | Add stocks, crypto, mutual funds, gold with monthly view |
-| 💸 Spending Tracker | Log expenses by category with date grouping |
-| ⚖️ Balance Overview | Net balance, invest vs spend ratio, monthly breakdown |
-| 🔐 Authentication | Email/password + Google sign in via Firebase |
-| 📊 Real-time Sync | Firestore real-time updates across devices |
-| 📱 Responsive | Mobile-first design, works on all screen sizes |
-| 🌑 Dark Theme | Premium dark UI with emerald + gold color system |
+### v1.6 (Next) — Real Finance App
+- 📈 Live MF Prices (AMFI API)
+- 🔁 Recurring Transactions
+
+### v1.7 — Speed & Convenience
+- 📱 SMS Paste-to-Parse (HDFC, SBI, ICICI, Axis, Kotak)
+- 💵 Cash Mode Toggle (3-second logging)
+
+### v1.8 — Complete Investing
+- 📊 Live Stock Prices (Yahoo Finance)
+- ₿ Live Crypto Prices (CoinGecko)
+- 📸 Photo Receipt OCR (Tesseract.js)
+
+### v1.9 — Viral & Marketing
+- 📊 Salary Sankey Flow Diagram
+- 🔔 Streak Push Notifications
+- 🎯 Goals Page Full Build
+
+### v2.0 — THE BIG BET
+- 👨‍👩‍👧 **Couples/Family Shared Mode** — First Indian finance app for couples!
+
+---
+
+## 🎯 Why DhanTrack?
+
+### Built for Indians, by an Indian
+- **Rupee-first** — All amounts in ₹ with Indian comma formatting
+- **Indian context** — Knows Swiggy, Zomato, Zerodha, Binance, FD/RD, SIP
+- **Festival aware** — Future: Diwali/Holi spending spikes detection
+- **Couples-focused** — v2.0 will target newly-married Indian couples
+
+### Free Forever
+- No ads (we never sell user attention)
+- No premium tier (yet)
+- No data selling
+- Open source on GitHub
+- Built on Firebase free tier
+
+### Privacy First
+- Your data stays in YOUR Firebase
+- No analytics tracking
+- No third-party SDKs
+- Sign out anytime, data still yours
+
+---
+
+## 🤝 Contributing
+
+This is a personal project but open to contributions:
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
 ## 📸 Screenshots
 
-> Dashboard · Investments · Spending · Balance
+> Coming soon — will add screenshots after v1.5 production launch.
 
 ---
 
-## 🛠️ Tech Stack
+## 🐛 Known Issues
 
-| Layer | Tech |
-|---|---|
-| Frontend | React 18 + Vite |
-| Styling | Tailwind CSS |
-| Auth | Firebase Authentication |
-| Database | Firebase Firestore |
-| Hosting | Vercel |
+- Personality empty state shows even after exactly 14 days (minor)
+- Search with 1 character returns no results (intentional — performance)
+- Image share on iOS Safari may fail (Web Share API limitation)
 
 ---
 
-## 🚀 Getting Started
+## 📧 Contact
 
-### 1. Clone the repo
-```bash
-git clone https://github.com/Katkargaurav09/Dhantrack.git
-cd Dhantrack
-```
-
-### 2. Install dependencies
-```bash
-npm install
-```
-
-### 3. Set up Firebase
-- Go to [Firebase Console](https://console.firebase.google.com)
-- Create a project → enable **Firestore** and **Authentication**
-- Enable **Email/Password** and **Google** sign-in providers
-- Copy your config values
-
-### 4. Create `.env` file in root
-```env
-VITE_FIREBASE_API_KEY=your_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-```
-
-### 5. Run locally
-```bash
-npm run dev
-```
-Open [http://localhost:5173](http://localhost:5173)
+**Gaurav Katkar**  
+📧 katkargaurav6@gmail.com  
+🌐 [DhanTrack Web App](https://dhantrack-one.vercel.app)  
+🐙 [@Katkargaurav09](https://github.com/Katkargaurav09)
 
 ---
 
-## 📁 Project Structure
+## 📜 License
 
-```
-src/
-├── firebase/
-│   └── config.js           # Firebase connection setup
-├── hooks/
-│   ├── useAuth.js           # Auth state + login/register/logout
-│   └── useFirestore.js      # Real-time Firestore CRUD
-├── pages/
-│   ├── AuthPage.jsx         # Login + Register (split layout)
-│   ├── Home.jsx             # Dashboard overview
-│   ├── Investments.jsx      # Investment tracker with calendar
-│   ├── Spending.jsx         # Spending tracker with categories
-│   └── Balance.jsx          # Net balance + monthly breakdown
-└── App.jsx                  # Root — auth flow + navigation
-```
+MIT License — feel free to fork, learn, and build your own!
 
 ---
 
-## 🔒 Firestore Security Rules
+## 🙏 Acknowledgments
 
-```js
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null
-                         && request.auth.uid == userId;
-    }
-  }
-}
-```
-
-Each user can only access their own data.
+- **Anthropic Claude** — AI pair programmer through every version
+- **Firebase** — Best free backend ever
+- **Vercel** — Free hosting that just works
+- **Capacitor** — Web → Native magic
+- **Indian fintech community** — For inspiration
 
 ---
 
-## 🌐 Deployment
-
-Deployed on **Vercel** with automatic GitHub integration.  
-Every push to `main` triggers a new deployment automatically.
-
----
-
-## ⚠️ Security Note
-
-Never commit your `.env` file. It is listed in `.gitignore` and contains your private Firebase API keys.
-
----
-
-## 📄 License
-
-MIT License — free to use, modify and distribute.
-
----
-
-<div align="center">
-  Built with ❤️ using React + Firebase
-</div>
+<p align="center">
+  Made with ❤️ in India 🇮🇳<br>
+  <strong>Track your money. Build your future.</strong>
+</p>
