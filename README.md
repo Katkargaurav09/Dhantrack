@@ -1,67 +1,109 @@
----
+# 💰 DhanTrack
 
-## 📅 Version History
+> **Personal Finance Tracker for Indians** — Built with React + Firebase + Capacitor
 
-### v1.5 (Current) — Power User Features
-- 🎯 **Custom Category Groups** — Project-style tracking
-- 🤖 **Smart Auto-Categorization** — Learns your habits
-- ✨ **Spending Personality** — 12 personality types + viral share
-- 🐛 Autopay: Spending vs Investment selector
-- 🐛 Fixed custom category collision bug
+[![Version](https://img.shields.io/badge/version-1.5-blue.svg)](https://github.com/Katkargaurav09/Dhantrack)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20Web-green.svg)](https://dhantrack-one.vercel.app)
+[![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
-### v1.4 — Foundation Features
-- 🔍 Global Search across all data
-- 📊 Category Drill-Down with yearly/monthly views
-- 💸 Spending Pool ("₹X for Y days" tracker)
-- 🔔 Autopay Start Date + yearly cost framing
-- 🔄 Auto-add to Spending on autopay renewal
-- 🐛 Fixed ghost panel rendering issues
-
-### v1.3 — Subscriptions & Goals
-- 🔔 Autopay & Subscriptions tracker
-- 🎯 Budget Goals & Savings Goals
-- 🏆 Streak tracking with badges
-- 🆕 New user onboarding
-
-### v1.2 — Monthly Views
-- 📊 Monthly grid for spending & investments
-- 🎨 Custom categories with icons
-- 🔧 Edit/delete entries
-
-### v1.1 — Authentication
-- 🔐 Google Sign-In
-- ☁️ Firestore data sync
-- 📱 Mobile-responsive design
-
-### v1.0 — Initial Release
-- 💸 Basic spending tracker
-- 📈 Basic investment tracker
-- 💰 Net balance calculation
+🌐 **Live App**: [dhantrack-one.vercel.app](https://dhantrack-one.vercel.app)  
+📱 **Android**: Available on Google Play Store (Closed Testing)
 
 ---
 
-## 🗺️ Roadmap
+## ✨ Features
 
-### v1.6 (Next) — Real Finance App
-- 📈 Live MF Prices (AMFI API)
-- 🔁 Recurring Transactions
+### 💸 Spending & Investments
+- Track every rupee in or out
+- Beautiful monthly grid view
+- Drill-down by category for any time period
+- Custom icons for every category
+- Edit, delete, and note any entry
 
-### v1.7 — Speed & Convenience
-- 📱 SMS Paste-to-Parse (HDFC, SBI, ICICI, Axis, Kotak)
-- 💵 Cash Mode Toggle (3-second logging)
+### 🎯 Custom Categories (v1.5)
+Create project-style categories that group entries together:
+- **"Puri Trip"** — Track all 7-day trip expenses in one place
+- **"Binance"** — All crypto investments grouped
+- **"Wedding"** — Event-based tracking
+- **"Office Setup"** — One-time project tracking
 
-### v1.8 — Complete Investing
-- 📊 Live Stock Prices (Yahoo Finance)
-- ₿ Live Crypto Prices (CoinGecko)
-- 📸 Photo Receipt OCR (Tesseract.js)
+Two creation modes:
+- **Pull Existing** — Select date range → checkbox specific entries → group them
+- **Start Fresh** — Create empty category → add entries later
 
-### v1.9 — Viral & Marketing
-- 📊 Salary Sankey Flow Diagram
-- 🔔 Streak Push Notifications
-- 🎯 Goals Page Full Build
+### 🤖 Smart Auto-Categorization (v1.5)
+App suggests categories as you type:
+- Type "Swiggy" → suggests **Food** 🍔
+- Type "Uber" → suggests **Travel** ✈️
+- Type "Binance" → suggests **Crypto** ₿
+- Type "Zerodha" → suggests **Stock** 📊
+- **Learns from your history** — After 3 same-tags, remembers your habits
 
-### v2.0 — THE BIG BET
-- 👨‍👩‍👧 **Couples/Family Shared Mode** — First Indian finance app for couples!
+100+ built-in merchants pre-configured.
+
+### ✨ Spending Personality (v1.5)
+Discover your money personality from your data:
+- 🎉 **Weekend Splurger** — 50%+ spending on Sat-Sun
+- 👑 **Investor King** — Invest 1.5x more than spend
+- 🍔 **Food Lover** — 35%+ on dining
+- 📺 **Subscription Collector** — 8+ active subs
+- 💰 **Cash Hoarder** — 60%+ savings rate
+- ⚖️ **Balanced Planner** — Healthy invest/spend ratio
+- ⚡ **Impulse Buyer** — Many small daily purchases
+- ₿ **Crypto Curious** — 40%+ in crypto
+- 📊 **Consistent Tracker** — 14+ day streak
+
+**Share to Instagram/WhatsApp** with auto-generated story image (1080x1920).
+
+### 🔔 Autopay & Subscriptions
+Track recurring payments with:
+- Multiple frequencies (Weekly, Monthly, Quarterly, Yearly, Custom)
+- Renewal countdown with smart alerts
+- **Spending vs Investment selector** (v1.5) — auto-route SIPs to investments
+- Start date + total spent calculation
+- Yearly cost framing — see "₹2,388/year" not just "₹199/month"
+- Auto-add to Spending/Investments on renewal
+- Pause/resume any subscription
+
+### 💎 Goals & Pools
+- **Budget Goals** — Monthly category limits with traffic-light status
+- **Savings Goals** — Long-term targets with progress tracking
+- **Spending Pools** — "₹X for Y days" tracker (trips, monthly food, half-salary)
+
+### 🔍 Global Search
+Search across ALL your data instantly:
+- Entries (name, note, amount, date)
+- Custom categories
+- Autopay subscriptions
+- Investments
+
+Highlights matches, shows totals, recent searches saved.
+
+### 🏆 Streak & Badges
+- Track consecutive days of logging
+- 9 unlockable badges (locked + progress shown)
+- Visual progress bars for in-progress badges
+
+### 📊 Insights
+- Net balance hero card
+- Monthly quick status
+- Yearly aggregate views
+- Category breakdowns
+- Recent activity feed
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18 + Vite |
+| **Styling** | Tailwind CSS + Custom CSS |
+| **Backend** | Firebase Firestore (real-time database) |
+| **Auth** | Firebase Authentication |
+| **Hosting (Web)** | Vercel |
+| **Mobile** | Capacitor (Android) |
+| **State Mgmt** | React Hooks + Custom useFirestore hook |
 
 ---
 
@@ -143,3 +185,6 @@ MIT License — feel free to fork, learn, and build your own!
   Made with ❤️ in India 🇮🇳<br>
   <strong>Track your money. Build your future.</strong>
 </p>
+---
+
+## 📁 Project Structure
