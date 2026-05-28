@@ -150,16 +150,16 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
   );
 }
 
-// ── Entry Panel (✨ NOW with Smart Auto-Categorization) ──
-function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageTypes, learnedCategories, learnCategory, investments }) {
+// ── Entry Panel (Smart Auto-Categorization + ✨ presetType) ──
+function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageTypes, learnedCategories, learnCategory, investments, presetType }) {
   const isEdit = !!editEntry;
   const accentColor = "#34D399";
   const [name,setName]=useState(""); const [amount,setAmount]=useState("");
   const [date,setDate]=useState(new Date().toISOString().split("T")[0]);
   const [type,setType]=useState("Stock"); const [note,setNote]=useState("");
   const [saving,setSaving]=useState(false);
-  const [suggestion, setSuggestion] = useState(null); // ✨ NEW
-  const [userPickedManually, setUserPickedManually] = useState(false); // ✨ NEW
+  const [suggestion, setSuggestion] = useState(null);
+  const [userPickedManually, setUserPickedManually] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -168,15 +168,15 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
       setDate(editEntry.date || new Date().toISOString().split("T")[0]);
       setType(editEntry.type || "Stock"); setNote(editEntry.note || "");
     } else {
-      setName(""); setAmount(""); setNote(""); setType("Stock");
+      setName(""); setAmount(""); setNote("");
+      setType(presetType || "Stock"); // ✨ FIX #2: pre-select type when adding from inside a category
       setDate(new Date().toISOString().split("T")[0]);
     }
     setSuggestion(null);
     setUserPickedManually(false);
     setSaving(false);
-  }, [open, isEdit, editEntry?.id]);
+  }, [open, isEdit, editEntry?.id, presetType]);
 
-  // ✨ NEW: Auto-suggest category when name changes
   useEffect(() => {
     if (!name.trim() || name.length < 2 || isEdit) {
       setSuggestion(null);
@@ -221,7 +221,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
       } else {
         await onSave({ name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim() });
 
-        // ✨ NEW: Learn merchant→category if used 3+ times
         if (learnCategory && name.trim().length >= 3) {
           const merchant = extractMerchant(name);
           if (merchant && merchant.length >= 3) {
@@ -266,7 +265,6 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Name</label>
             <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Zerodha Nifty 50" style={inp}/>
             
-            {/* ✨ NEW: Auto-suggestion banner */}
             {suggestion && !isEdit && (
               <button onClick={applySuggestion} style={{
                 width:"100%",
@@ -306,7 +304,7 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
               </button>
             </div>
             <select value={type} onChange={e=>handleTypeChange(e.target.value)} style={selectStyle}>
-              {allTypes.map(t=><option key={t.name} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal"}}>{t.icon} {t.name}</option>)}
+              {allTypes.map(t=><option key={t.name} value={t.name} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal"}}>{t.icon} {t.name}</option>)}
             </select>
           </div>
         </div>
@@ -344,8 +342,9 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
   const entries=investments.filter(e=>mkey(e.date)===mk);
   const total=entries.reduce((s,e)=>s+e.amount,0);
   const grouped=groupByDate(entries);
-  const allTypeNames=Object.keys(iconMap);
-  const byType=allTypeNames.map(t=>({type:t,icon:iconMap[t]||"💡",total:entries.filter(e=>e.type===t).reduce((s,e)=>s+e.amount,0)})).filter(t=>t.total>0).sort((a,b)=>b.total-a.total);
+  // ✨ FIX #3 (month view): byType from ACTUAL entry types
+  const usedTypes=[...new Set(entries.map(e=>e.type||"Other"))];
+  const byType=usedTypes.map(t=>({type:t,icon:iconMap[t]||"💡",total:entries.filter(e=>e.type===t).reduce((s,e)=>s+e.amount,0)})).filter(t=>t.total>0).sort((a,b)=>b.total-a.total);
   const navBtn={width:"42px",height:"42px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#E5E7EB",fontSize:"18px",cursor:"pointer",fontFamily:"inherit"};
 
   return(
@@ -449,8 +448,10 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   const [editEntry,   setEditEntry]   = useState(null);
   const [manageTypes, setManageTypes] = useState(false);
   const [activeType,  setActiveType]  = useState(null);
-  const [showCustomPanel, setShowCustomPanel] = useState(false); // ✨ NEW
-  const [activeCustom,    setActiveCustom]    = useState(null);  // ✨ NEW
+  const [showCustomPanel, setShowCustomPanel] = useState(false);
+  const [editCustomCat,   setEditCustomCat]   = useState(null);  // ✨ NEW (#1): edit a custom cat
+  const [activeCustom,    setActiveCustom]    = useState(null);
+  const [presetType,      setPresetType]      = useState(null);  // ✨ NEW (#2)
   const [vis,         setVis]         = useState(false);
 
   useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
@@ -461,6 +462,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   useEffect(()=>{
     if (quickAddTrigger?.type === "investment") {
       setEditEntry(null);
+      setPresetType(null);
       setPanelOpen(true);
     }
   }, [quickAddTrigger?.ts]);
@@ -472,13 +474,14 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
       setEditEntry(null);
       setActiveType(null);
       setShowCustomPanel(false);
+      setEditCustomCat(null);
       setActiveCustom(null);
+      setPresetType(null);
     };
   }, []);
 
-  // ✨ NEW: Filter custom categories — only show "investment" kind
   const investmentCustomCats = customCategories.filter(c => c.kind === "investment");
-  const legacyTypes = categories; // shared between pages until user migrates
+  const legacyTypes = categories;
 
   const allTypes = [
     ...DEFAULT_TYPES.map(name=>({name, icon:ICONS[name]||"💡"})),
@@ -488,21 +491,31 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   const iconMap = {};
   allTypes.forEach(t=>{ iconMap[t.name]=t.icon; });
   investmentCustomCats.forEach(c=>{ iconMap[c.name]=c.icon; });
+  // ✨ FIX #3/#5: ensure any type used in entries has an icon
+  investments.forEach(e=>{ if(e.type && !iconMap[e.type]) iconMap[e.type] = ICONS[e.type] || "💡"; });
 
   const year = new Date().getFullYear();
   const keys = buildKeys(year);
   const totalAll = investments.reduce((s,e)=>s+e.amount,0);
 
-  function openEdit(entry) { setEditEntry(entry); setPanelOpen(true); }
-  function closePanel()    { setPanelOpen(false); setEditEntry(null); }
+  function openEdit(entry) { setEditEntry(entry); setPresetType(null); setPanelOpen(true); }
+  function closePanel()    { setPanelOpen(false); setEditEntry(null); setPresetType(null); }
 
   function openTypeDetail(typeName, typeIcon) {
     setActiveType({ name: typeName, icon: typeIcon });
   }
 
-  // ✨ NEW: Open custom category detail
   function openCustomDetail(customCat) {
     setActiveCustom(customCat);
+  }
+
+  // ✨ NEW (#6): delete a custom category
+  async function deleteCustomCat(cat) {
+    if (!confirm(`Delete custom category "${cat.name}"? Your entries stay safe — they just won't be grouped here anymore.`)) return;
+    try {
+      await deleteDoc(doc(db, "users", uid, "customCategories", cat.id));
+      setActiveCustom(null);
+    } catch(e) { alert("Failed: " + e.message); }
   }
 
   const handleAdd = useCallback(async(entry)=>{
@@ -522,7 +535,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
 
   // Drill-down for normal types
   if (activeType) {
-    const typeEntries = investments.filter(e => e.type === activeType.name);
+    const typeEntries = investments.filter(e => (e.type || "Other") === activeType.name);
     return (
       <CategoryDetail
         categoryName={activeType.name}
@@ -536,7 +549,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
     );
   }
 
-  // ✨ NEW: Drill-down for custom categories
+  // ✨ Drill-down for custom categories (with Add/Edit/Delete — #1, #2, #6)
   if (activeCustom) {
     const customEntries = investments.filter(e => 
       Array.isArray(e.customTags) && e.customTags.includes(activeCustom.id)
@@ -547,9 +560,13 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
         categoryIcon={activeCustom.icon}
         entries={customEntries}
         kind="investments"
+        isCustom
         onBack={() => setActiveCustom(null)}
         onEdit={(entry) => { setActiveCustom(null); openEdit(entry); }}
         onDelete={handleDelete}
+        onAddEntry={() => { setPresetType(null); setEditEntry(null); setPanelOpen(true); }}
+        onEditCategory={() => { setEditCustomCat(activeCustom); setShowCustomPanel(true); }}
+        onDeleteCategory={() => deleteCustomCat(activeCustom)}
       />
     );
   }
@@ -583,14 +600,14 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
           </div>
         </div>
 
-        {/* ✨ NEW v1.5: Custom Categories (Binance, Zerodha, etc.) */}
+        {/* Custom Categories */}
         <div style={{...card, padding:"16px", marginBottom:"20px"}}>
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="text-sm font-bold" style={{color:"#E5E7EB"}}>🎯 Custom Categories</p>
               <p className="text-xs" style={{color:"#6B7280", marginTop:"2px"}}>Platforms, projects, anything you want to track</p>
             </div>
-            <button onClick={()=>setShowCustomPanel(true)}
+            <button onClick={()=>{ setEditCustomCat(null); setShowCustomPanel(true); }}
               style={{
                 padding:"6px 12px",
                 background:"linear-gradient(135deg,#34D399,#059669)",
@@ -654,15 +671,18 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
           )}
         </div>
 
-        {/* All-Time Types (default + legacy custom) */}
+        {/* ✨ FIX #3: All-Time Types built from ACTUAL entry types — FD/RD, Father always show */}
         {(() => {
-          const allTypesWithData = allTypes.map(t => ({
-            ...t,
-            total: investments.filter(e => e.type === t.name).reduce((s,e) => s+Number(e.amount), 0),
-            count: investments.filter(e => e.type === t.name).length,
-          })).filter(t => t.count > 0).sort((a,b) => b.total - a.total);
+          const typeAgg = {};
+          investments.forEach(e => {
+            const t = e.type || "Other";
+            if (!typeAgg[t]) typeAgg[t] = { name: t, icon: iconMap[t] || ICONS[t] || "💡", total: 0, count: 0 };
+            typeAgg[t].total += Number(e.amount) || 0;
+            typeAgg[t].count += 1;
+          });
+          const allTimeTypes = Object.values(typeAgg).sort((a,b) => b.total - a.total);
 
-          if (allTypesWithData.length === 0) return null;
+          if (allTimeTypes.length === 0) return null;
 
           return (
             <div style={{...card, padding: "16px", marginBottom: "20px"}}>
@@ -671,7 +691,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
                 <span style={{color:"#6B7280",fontSize:"10px",fontStyle:"italic"}}>Tap to drill down</span>
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
-                {allTypesWithData.slice(0, 8).map(t => (
+                {allTimeTypes.map(t => (
                   <button key={t.name} onClick={()=>openTypeDetail(t.name, t.icon)}
                     style={{
                       padding:"8px 12px",
@@ -709,9 +729,9 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
           iconMap={iconMap} onTypeClick={openTypeDetail}/>
       )}
 
-      {panelOpen   && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)} learnedCategories={learnedCategories} learnCategory={learnCategory} investments={investments}/>}
+      {panelOpen   && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)} learnedCategories={learnedCategories} learnCategory={learnCategory} investments={investments} presetType={presetType}/>}
       {manageTypes && <ManageTypesPanel open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>}
-      {showCustomPanel && <CustomCategoryPanel open={showCustomPanel} onClose={()=>setShowCustomPanel(false)} uid={uid} kind="investment" investments={investments}/>}
+      {showCustomPanel && <CustomCategoryPanel open={showCustomPanel} onClose={()=>{setShowCustomPanel(false); setEditCustomCat(null);}} uid={uid} kind="investment" investments={investments} editCategory={editCustomCat}/>}
     </div>
   );
 }

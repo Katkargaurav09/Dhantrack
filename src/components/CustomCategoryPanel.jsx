@@ -79,15 +79,14 @@ export default function CustomCategoryPanel({
       .reduce((sum, e) => sum + Number(e.amount), 0);
   }, [filteredEntries, selectedIds]);
 
-  // Reset when opened
+  // ✨ FIX #5: load the SAVED icon when editing (with safe fallback)
   useEffect(() => {
     if (open) {
       setStep(1);
       setError("");
       if (isEdit) {
-        setName(editCategory.name);
-        setIcon(editCategory.icon);
-        // For edit, default to "fresh" mode (can't re-pull)
+        setName(editCategory.name || "");
+        setIcon(editCategory.icon || (kind === "spending" ? "💸" : "📊")); // load saved icon, not default
         setMode("fresh");
       } else {
         setName("");
@@ -151,7 +150,7 @@ export default function CustomCategoryPanel({
     setError("");
     try {
       if (isEdit) {
-        // EDIT: just update name + icon
+        // EDIT: update name + icon (✨ #1, #5)
         await updateDoc(doc(db, "users", uid, "customCategories", editCategory.id), {
           name: name.trim(),
           icon,
@@ -176,10 +175,8 @@ export default function CustomCategoryPanel({
           
           selectedIds.forEach(entryId => {
             const entryRef = doc(db, "users", uid, sourceCollection, entryId);
-            // Get current entry's customTags (default to empty array)
             const entry = filteredEntries.find(e => e.id === entryId);
             const currentTags = entry?.customTags || [];
-            // Add this category ID to tags
             const newTags = [...new Set([...currentTags, catRef.id])];
             batch.update(entryRef, { customTags: newTags });
           });
@@ -365,6 +362,20 @@ export default function CustomCategoryPanel({
                 <p style={{color: "#9CA3AF", fontSize: "11px", lineHeight: 1.6}}>
                   💡 Example: For "Puri Trip" pick the 7 days you were there.<br/>
                   For "Binance" pick a wide range like last 1 year.
+                </p>
+              </div>
+            )}
+
+            {/* ✨ Edit hint */}
+            {isEdit && (
+              <div style={{
+                padding: "10px 12px",
+                background: `rgba(${accentRgb},0.05)`,
+                border: `1px solid rgba(${accentRgb},0.12)`,
+                borderRadius: "10px",
+              }}>
+                <p style={{color: "#9CA3AF", fontSize: "11px", lineHeight: 1.6}}>
+                  💡 Editing updates the name and icon. To add entries, open the category and tap "+ Add Entry".
                 </p>
               </div>
             )}

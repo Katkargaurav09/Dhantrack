@@ -19,6 +19,10 @@ export default function CategoryDetail({
   onBack,
   onEdit,
   onDelete,
+  onAddEntry,      // ✨ NEW (#6): custom categories only — add new entry into this category
+  onEditCategory,  // ✨ NEW (#1): custom categories only — edit category name/icon
+  onDeleteCategory,// ✨ NEW (#6): custom categories only — delete the category
+  isCustom = false,// ✨ NEW: flag to show custom-category action bar
 }) {
   const [vis,        setVis]        = useState(false);
   const [query,      setQuery]      = useState("");
@@ -137,7 +141,7 @@ export default function CategoryDetail({
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ color: "#E5E7EB", fontSize: "18px", fontWeight: 700 }}>{categoryName}</p>
             <p style={{ color: "#6B7280", fontSize: "11px", fontFamily: "monospace", marginTop: "2px" }}>
-              {kind === "investments" ? "Investment Type" : "Spending Category"} · All-time view
+              {isCustom ? "Custom Category" : (kind === "investments" ? "Investment Type" : "Spending Category")} · All-time view
             </p>
           </div>
         </div>
@@ -157,6 +161,36 @@ export default function CategoryDetail({
           <p style={{ color: "#4B5563", fontSize: "11px", marginTop: "12px", fontFamily: "monospace" }}>
             📅 {fmtDate(stats.firstDate.toISOString())} → {fmtDate(stats.lastDate.toISOString())}
           </p>
+        )}
+
+        {/* ✨ NEW (#1, #6): Custom category action bar — only for custom categories */}
+        {isCustom && (
+          <div style={{ display: "flex", gap: "8px", marginTop: "14px" }}>
+            {onAddEntry && (
+              <button onClick={onAddEntry} style={{
+                flex: 1, padding: "10px",
+                background: `linear-gradient(135deg, ${color}, ${color}cc)`,
+                border: "none", borderRadius: "10px",
+                color: kind === "investments" ? "#022C22" : "#fff",
+                fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+              }}>+ Add Entry</button>
+            )}
+            {onEditCategory && (
+              <button onClick={onEditCategory} title="Edit category" style={{
+                padding: "10px 14px",
+                background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)",
+                borderRadius: "10px", color: "#8B5CF6", fontSize: "13px", cursor: "pointer",
+                fontFamily: "inherit", display: "flex", alignItems: "center",
+              }}><Pencil/></button>
+            )}
+            {onDeleteCategory && (
+              <button onClick={onDeleteCategory} title="Delete category" style={{
+                padding: "10px 14px",
+                background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)",
+                borderRadius: "10px", color: "#F87171", fontSize: "13px", cursor: "pointer", fontFamily: "inherit",
+              }}>🗑</button>
+            )}
+          </div>
         )}
       </div>
 
@@ -258,6 +292,15 @@ export default function CategoryDetail({
           <div style={{ textAlign: "center", padding: "32px 16px", color: "#4B5563" }}>
             <p style={{ fontSize: "32px", marginBottom: "8px" }}>🔍</p>
             <p style={{ fontSize: "13px" }}>{query ? `No entries match "${query}"` : "No entries yet"}</p>
+            {isCustom && !query && onAddEntry && (
+              <button onClick={onAddEntry} style={{
+                marginTop: "12px", padding: "8px 16px",
+                background: `linear-gradient(135deg, ${color}, ${color}cc)`,
+                border: "none", borderRadius: "10px",
+                color: kind === "investments" ? "#022C22" : "#fff",
+                fontSize: "12px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+              }}>+ Add First Entry</button>
+            )}
           </div>
         )}
 
