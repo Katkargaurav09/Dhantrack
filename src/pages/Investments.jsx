@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { db } from "../firebase/config";
-import { doc, updateDoc, deleteDoc, collection, addDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, collection, addDoc, writeBatch } from "firebase/firestore";
 import CategoryDetail from "./CategoryDetail";
 import CustomCategoryPanel from "../components/CustomCategoryPanel";
 import { suggestCategory, extractMerchant } from "../utils/keywordMap";
@@ -150,8 +150,8 @@ function ManageTypesPanel({ open, onClose, uid, customTypes }) {
   );
 }
 
-// ── Entry Panel (Smart Auto-Categorization + ✨ presetType) ──
-function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageTypes, learnedCategories, learnCategory, investments, presetType }) {
+// ── Entry Panel (Smart Auto-Cat + presetType + ✨ presetCustomTagId) ──
+function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageTypes, learnedCategories, learnCategory, investments, presetType, presetCustomTagId }) {
   const isEdit = !!editEntry;
   const accentColor = "#34D399";
   const [name,setName]=useState(""); const [amount,setAmount]=useState("");
@@ -169,7 +169,7 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
       setType(editEntry.type || "Stock"); setNote(editEntry.note || "");
     } else {
       setName(""); setAmount(""); setNote("");
-      setType(presetType || "Stock"); // ✨ FIX #2: pre-select type when adding from inside a category
+      setType(presetType || "Stock");
       setDate(new Date().toISOString().split("T")[0]);
     }
     setSuggestion(null);
@@ -178,37 +178,18 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
   }, [open, isEdit, editEntry?.id, presetType]);
 
   useEffect(() => {
-    if (!name.trim() || name.length < 2 || isEdit) {
-      setSuggestion(null);
-      return;
-    }
+    if (!name.trim() || name.length < 2 || isEdit) { setSuggestion(null); return; }
     if (userPickedManually) return;
-
     const result = suggestCategory(name, "investment", learnedCategories || {});
     if (result && result.category && result.category !== type) {
       const validTypes = allTypes.map(t => t.name);
-      if (validTypes.includes(result.category)) {
-        setSuggestion(result);
-      } else {
-        setSuggestion(null);
-      }
-    } else {
-      setSuggestion(null);
-    }
+      if (validTypes.includes(result.category)) setSuggestion(result);
+      else setSuggestion(null);
+    } else setSuggestion(null);
   }, [name, learnedCategories, allTypes, type, userPickedManually, isEdit]);
 
-  function applySuggestion() {
-    if (suggestion) {
-      setType(suggestion.category);
-      setSuggestion(null);
-    }
-  }
-
-  function handleTypeChange(newType) {
-    setType(newType);
-    setUserPickedManually(true);
-    setSuggestion(null);
-  }
+  function applySuggestion() { if (suggestion) { setType(suggestion.category); setSuggestion(null); } }
+  function handleTypeChange(newType) { setType(newType); setUserPickedManually(true); setSuggestion(null); }
 
   async function save() {
     if (!name.trim() || !amount || !date) return alert("Fill all fields");
@@ -219,17 +200,16 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
           name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim(),
         });
       } else {
-        await onSave({ name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim() });
+        // ✨ FIX #2: auto-tag entry with custom category if we're inside one
+        const entryData = { name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim() };
+        if (presetCustomTagId) entryData.customTags = [presetCustomTagId];
+        await onSave(entryData);
 
         if (learnCategory && name.trim().length >= 3) {
           const merchant = extractMerchant(name);
           if (merchant && merchant.length >= 3) {
-            const sameMatches = (investments || []).filter(i => 
-              i.name && i.name.toLowerCase().includes(merchant) && i.type === type
-            );
-            if (sameMatches.length >= 2) {
-              learnCategory(merchant, type);
-            }
+            const sameMatches = (investments || []).filter(i => i.name && i.name.toLowerCase().includes(merchant) && i.type === type);
+            if (sameMatches.length >= 2) learnCategory(merchant, type);
           }
         }
       }
@@ -240,9 +220,9 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
 
   return (
     <>
-      {open && <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose}/>}
-      <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
-        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"90vh",overflowY:"auto"}}>
+      {open && <div className="fixed inset-0 bg-black/60" style={{zIndex:80}} onClick={onClose}/>}
+      <div className={`fixed bottom-0 left-0 right-0 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
+        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"90vh",overflowY:"auto",zIndex:90}}>
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
         <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
           <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
@@ -264,27 +244,14 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
           <div>
             <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Name</label>
             <input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Zerodha Nifty 50" style={inp}/>
-            
             {suggestion && !isEdit && (
               <button onClick={applySuggestion} style={{
-                width:"100%",
-                marginTop:"8px",
-                padding:"10px 12px",
-                background:"rgba(52,211,153,0.08)",
-                border:"1px solid rgba(52,211,153,0.25)",
-                borderRadius:"10px",
-                color:"#34D399",
-                fontSize:"12px",
-                cursor:"pointer",
-                fontFamily:"inherit",
-                display:"flex",
-                alignItems:"center",
-                justifyContent:"space-between",
-                gap:"8px",
-                textAlign:"left",
+                width:"100%",marginTop:"8px",padding:"10px 12px",background:"rgba(52,211,153,0.08)",
+                border:"1px solid rgba(52,211,153,0.25)",borderRadius:"10px",color:"#34D399",
+                fontSize:"12px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",
+                justifyContent:"space-between",gap:"8px",textAlign:"left",
               }}>
-                <span>
-                  💡 Suggested: <strong>{ICONS[suggestion.category] || allTypes.find(t=>t.name===suggestion.category)?.icon || "💡"} {suggestion.category}</strong>
+                <span>💡 Suggested: <strong>{ICONS[suggestion.category] || allTypes.find(t=>t.name===suggestion.category)?.icon || "💡"} {suggestion.category}</strong>
                   {suggestion.source === "learned" && <span style={{color:"#9CA3AF",fontSize:"10px",marginLeft:"4px"}}>(from history)</span>}
                 </span>
                 <span style={{fontSize:"11px",fontWeight:"700"}}>Apply →</span>
@@ -307,12 +274,136 @@ function EntryPanel({ open, onClose, onSave, uid, editEntry, allTypes, onManageT
               {allTypes.map(t=><option key={t.name} value={t.name} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal"}}>{t.icon} {t.name}</option>)}
             </select>
           </div>
+          {/* ✨ FIX #2: show that entry will be auto-tagged */}
+          {presetCustomTagId && !isEdit && (
+            <div style={{padding:"10px 12px",background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.18)",borderRadius:"10px"}}>
+              <p style={{color:"#34D399",fontSize:"11px"}}>🎯 This entry will be tagged to the current custom category</p>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 px-5 pb-8">
           <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
           <button onClick={save} disabled={saving} style={{flex:1,padding:"13px",background:saving?"rgba(52,211,153,0.4)":"linear-gradient(135deg,#34D399,#059669)",border:"none",borderRadius:"12px",color:"#022C22",fontWeight:"700",fontSize:"14px",cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
             {saving ? "Saving..." : isEdit ? "Update Entry" : "Save Entry"}
           </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ✨ NEW (#3): Pick Existing Entries Panel — tag past entries to current custom category
+function PickExistingPanel({ open, onClose, uid, investments, customCat }) {
+  const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { if (open) { setSelectedIds(new Set()); setQuery(""); } }, [open]);
+
+  // Only show entries NOT already tagged to this custom cat
+  const available = useMemo(() => {
+    return investments
+      .filter(e => !(Array.isArray(e.customTags) && e.customTags.includes(customCat.id)))
+      .filter(e => {
+        if (!query.trim()) return true;
+        const q = query.toLowerCase();
+        return (e.name||"").toLowerCase().includes(q) || (e.note||"").toLowerCase().includes(q) || String(e.amount).includes(q);
+      })
+      .sort((a,b) => new Date(b.date) - new Date(a.date));
+  }, [investments, customCat?.id, query]);
+
+  const selectedTotal = useMemo(() => {
+    return available.filter(e => selectedIds.has(e.id)).reduce((s,e) => s + Number(e.amount), 0);
+  }, [available, selectedIds]);
+
+  function toggle(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function tagSelected() {
+    if (selectedIds.size === 0) return;
+    setSaving(true);
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach(id => {
+        const ref = doc(db, "users", uid, "investments", id);
+        const entry = investments.find(e => e.id === id);
+        const currentTags = entry?.customTags || [];
+        const newTags = [...new Set([...currentTags, customCat.id])];
+        batch.update(ref, { customTags: newTags });
+      });
+      await batch.commit();
+      onClose();
+    } catch (e) { alert("Failed: " + e.message); }
+    setSaving(false);
+  }
+
+  if (!open || !customCat) return null;
+
+  return (
+    <>
+      <div onClick={onClose} className="fixed inset-0 bg-black/60" style={{zIndex:80}}/>
+      <div className="fixed bottom-0 left-0 right-0 rounded-t-3xl"
+        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"90vh",overflowY:"auto",zIndex:90}}>
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
+        <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+          <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
+          <h3 className="font-bold text-white text-base">📅 Pick Existing → "{customCat.name}"</h3>
+        </div>
+
+        <div className="px-5 pt-4 pb-4">
+          <div style={{padding:"10px 14px",background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:"12px",marginBottom:"12px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <p style={{color:"#E5E7EB",fontSize:"12px",fontWeight:600}}>{selectedIds.size} selected</p>
+              <p style={{color:"#34D399",fontSize:"13px",fontWeight:700,fontFamily:"monospace"}}>{fmt(selectedTotal)}</p>
+            </div>
+          </div>
+
+          <input type="text" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search by name, note, amount..."
+            style={{...inp, marginBottom:"10px"}}/>
+
+          <div style={{maxHeight:"380px",overflowY:"auto",marginBottom:"12px"}}>
+            {available.length === 0 ? (
+              <div style={{textAlign:"center",padding:"32px",color:"#6B7280"}}>
+                <p style={{fontSize:"28px",marginBottom:"6px"}}>🔍</p>
+                <p style={{fontSize:"12px"}}>{query ? "No matching entries" : "All your entries are already tagged to this category"}</p>
+              </div>
+            ) : available.map(entry => {
+              const sel = selectedIds.has(entry.id);
+              return (
+                <button key={entry.id} onClick={()=>toggle(entry.id)} style={{
+                  width:"100%",padding:"10px 12px",marginBottom:"6px",
+                  background: sel ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.02)",
+                  border: sel ? "1px solid rgba(52,211,153,0.3)" : "1px solid rgba(255,255,255,0.05)",
+                  borderRadius:"10px",cursor:"pointer",fontFamily:"inherit",
+                  display:"flex",alignItems:"center",gap:"10px",textAlign:"left",
+                }}>
+                  <input type="checkbox" checked={sel} readOnly style={{width:"14px",height:"14px",accentColor:"#34D399",flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{color:"#E5E7EB",fontSize:"13px",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entry.name}</p>
+                    <p style={{color:"#6B7280",fontSize:"10px",fontFamily:"monospace",marginTop:"2px"}}>{fmtDate(entry.date)} · {entry.type}</p>
+                  </div>
+                  <p style={{color:"#34D399",fontSize:"13px",fontWeight:700,fontFamily:"monospace",flexShrink:0}}>{fmt(entry.amount)}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{display:"flex",gap:"10px"}}>
+            <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <button onClick={tagSelected} disabled={saving || selectedIds.size===0} style={{
+              flex:2,padding:"13px",
+              background: (saving||selectedIds.size===0) ? "rgba(52,211,153,0.4)" : "linear-gradient(135deg,#34D399,#059669)",
+              border:"none",borderRadius:"12px",color:"#022C22",fontWeight:700,fontSize:"14px",
+              cursor:(saving||selectedIds.size===0)?"not-allowed":"pointer",fontFamily:"inherit",
+            }}>
+              {saving ? "Tagging..." : selectedIds.size === 0 ? "Pick entries first" : `Tag ${selectedIds.size} ${selectedIds.size===1?"entry":"entries"}`}
+            </button>
+          </div>
         </div>
       </div>
     </>
@@ -342,7 +433,6 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
   const entries=investments.filter(e=>mkey(e.date)===mk);
   const total=entries.reduce((s,e)=>s+e.amount,0);
   const grouped=groupByDate(entries);
-  // ✨ FIX #3 (month view): byType from ACTUAL entry types
   const usedTypes=[...new Set(entries.map(e=>e.type||"Other"))];
   const byType=usedTypes.map(t=>({type:t,icon:iconMap[t]||"💡",total:entries.filter(e=>e.type===t).reduce((s,e)=>s+e.amount,0)})).filter(t=>t.total>0).sort((a,b)=>b.total-a.total);
   const navBtn={width:"42px",height:"42px",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"12px",border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#E5E7EB",fontSize:"18px",cursor:"pointer",fontFamily:"inherit"};
@@ -350,11 +440,9 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
   return(
     <div>
       <button onClick={onBack} className="text-sm font-medium block mb-4" style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>← Back</button>
-
       <div className="px-5 py-3 mb-3" style={{...card}}>
         <p className="font-bold text-white">Investment :</p>
       </div>
-
       <div className="flex items-center gap-2 mb-3">
         <button onClick={()=>shift(-1)} style={navBtn}>◄</button>
         <div style={{flex:1,...card,padding:"10px",textAlign:"center"}}>
@@ -362,7 +450,6 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
         </div>
         <button onClick={()=>shift(1)} style={navBtn}>►</button>
       </div>
-
       <div className="grid grid-cols-2 gap-2 mb-4">
         {[["Invest","#34D399"],["Total","#E5E7EB"]].map(([lbl,col])=>(
           <div key={lbl} style={{...card,padding:"12px 16px",textAlign:"center"}}>
@@ -371,7 +458,6 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
           </div>
         ))}
       </div>
-
       {byType.length>0&&(
         <div className="p-4 mb-4" style={{...card}}>
           <div className="flex items-center justify-between mb-3">
@@ -381,9 +467,7 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
           <div className="space-y-2">
             {byType.map(({type,icon,total:tt})=>(
               <button key={type} onClick={()=>onTypeClick(type,icon)}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:"8px",padding:"6px 4px",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",borderRadius:"8px",transition:"background .15s"}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(52,211,153,0.04)"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                style={{width:"100%",display:"flex",alignItems:"center",gap:"8px",padding:"6px 4px",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",borderRadius:"8px",transition:"background .15s"}}>
                 <span style={{fontSize:"14px",width:"20px"}}>{icon}</span>
                 <div style={{flex:1,textAlign:"left"}}>
                   <div className="flex justify-between text-xs mb-1">
@@ -399,15 +483,12 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
           </div>
         </div>
       )}
-
       {grouped.length===0&&(
         <div style={{...card,textAlign:"center",padding:"48px 20px",color:"#4B5563"}}>
           <p style={{fontSize:"36px",marginBottom:"8px"}}>📈</p>
           <p style={{fontSize:"14px"}}>No investments this month</p>
-          <p style={{fontSize:"12px",marginTop:"4px",color:"#374151"}}>Tap + to add one</p>
         </div>
       )}
-
       <div className="space-y-3">
         {grouped.map(([date,dayEntries])=>{
           const dayTotal=dayEntries.reduce((s,e)=>s+e.amount,0);
@@ -418,20 +499,17 @@ function MonthDetail({mk, onChange, investments, onBack, onDelete, onEdit, iconM
                 <p className="text-sm font-bold font-mono" style={{color:"#E5E7EB"}}>{fmt(dayTotal)}</p>
               </div>
               {dayEntries.map((e,ei)=>(
-                <div key={e.id} className="flex items-center px-4 py-3"
-                  style={{borderBottom:ei<dayEntries.length-1?"1px solid rgba(255,255,255,0.03)":"none"}}>
+                <div key={e.id} className="flex items-center px-4 py-3" style={{borderBottom:ei<dayEntries.length-1?"1px solid rgba(255,255,255,0.03)":"none"}}>
                   <div style={{fontSize:"20px",flexShrink:0,width:"36px"}}>{iconMap[e.type]||"💡"}</div>
                   <div style={{flex:1,minWidth:0,padding:"0 8px"}}>
                     <p className="text-sm font-medium truncate" style={{color:"#E5E7EB"}}>{e.name}</p>
                     <p className="text-xs truncate" style={{color:"#6B7280"}}>{e.type}{e.note ? ` · ${e.note}` : ""}</p>
                   </div>
                   <p className="text-sm font-bold font-mono flex-shrink-0 mr-2" style={{color:"#34D399"}}>{fmt(e.amount)}</p>
-                  <button onClick={()=>onEdit(e)} title="Edit"
-                    style={{color:"#8B5CF6",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",borderRadius:"8px",padding:"6px",cursor:"pointer",marginRight:"4px",display:"flex",alignItems:"center"}}>
+                  <button onClick={()=>onEdit(e)} title="Edit" style={{color:"#8B5CF6",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",borderRadius:"8px",padding:"6px",cursor:"pointer",marginRight:"4px",display:"flex",alignItems:"center"}}>
                     <Pencil/>
                   </button>
-                  <button onClick={()=>onDelete("investments",e.id)} title="Delete"
-                    style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"8px",padding:"6px 8px",cursor:"pointer",fontSize:"13px"}}>✕</button>
+                  <button onClick={()=>onDelete("investments",e.id)} title="Delete" style={{color:"#F87171",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:"8px",padding:"6px 8px",cursor:"pointer",fontSize:"13px"}}>✕</button>
                 </div>
               ))}
             </div>
@@ -449,9 +527,11 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   const [manageTypes, setManageTypes] = useState(false);
   const [activeType,  setActiveType]  = useState(null);
   const [showCustomPanel, setShowCustomPanel] = useState(false);
-  const [editCustomCat,   setEditCustomCat]   = useState(null);  // ✨ NEW (#1): edit a custom cat
+  const [editCustomCat,   setEditCustomCat]   = useState(null);
   const [activeCustom,    setActiveCustom]    = useState(null);
-  const [presetType,      setPresetType]      = useState(null);  // ✨ NEW (#2)
+  const [presetType,      setPresetType]      = useState(null);
+  const [presetCustomTagId, setPresetCustomTagId] = useState(null); // ✨ NEW #2: tag entry into custom cat
+  const [pickExistingOpen, setPickExistingOpen] = useState(false);  // ✨ NEW #3
   const [vis,         setVis]         = useState(false);
 
   useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
@@ -459,24 +539,52 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   const {investments=[], categories=[], customCategories=[], learnedCategories={}, addEntry, deleteEntry, learnCategory, loading=false} = firestoreData||{};
   const uid = user?.uid;
 
+  // ✨ Drill-down state for global + button (window event)
+  useEffect(() => {
+    // Tell the FAB which context we're in so + adds directly into it
+    let ctx = null;
+    if (activeCustom) {
+      ctx = { page: "investments", customTagId: activeCustom.id, label: activeCustom.name };
+    } else if (activeType) {
+      ctx = { page: "investments", presetType: activeType.name, label: activeType.name };
+    }
+    window.__dhanPresetContext = ctx;
+    window.dispatchEvent(new CustomEvent("dhan-preset-changed"));
+    return () => {
+      window.__dhanPresetContext = null;
+      window.dispatchEvent(new CustomEvent("dhan-preset-changed"));
+    };
+  }, [activeCustom, activeType]);
+
+  // ✨ Listen for global + when this page is active
+  useEffect(() => {
+    function handler(e) {
+      const ctx = e.detail;
+      if (!ctx || ctx.page !== "investments") return;
+      setEditEntry(null);
+      setPresetType(ctx.presetType || null);
+      setPresetCustomTagId(ctx.customTagId || null);
+      setPanelOpen(true);
+    }
+    window.addEventListener("dhan-preset-add", handler);
+    return () => window.removeEventListener("dhan-preset-add", handler);
+  }, []);
+
   useEffect(()=>{
     if (quickAddTrigger?.type === "investment") {
       setEditEntry(null);
       setPresetType(null);
+      setPresetCustomTagId(null);
       setPanelOpen(true);
     }
   }, [quickAddTrigger?.ts]);
 
   useEffect(() => {
     return () => {
-      setPanelOpen(false);
-      setManageTypes(false);
-      setEditEntry(null);
-      setActiveType(null);
-      setShowCustomPanel(false);
-      setEditCustomCat(null);
-      setActiveCustom(null);
-      setPresetType(null);
+      setPanelOpen(false); setManageTypes(false); setEditEntry(null);
+      setActiveType(null); setShowCustomPanel(false); setEditCustomCat(null);
+      setActiveCustom(null); setPresetType(null); setPresetCustomTagId(null);
+      setPickExistingOpen(false);
     };
   }, []);
 
@@ -491,25 +599,18 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
   const iconMap = {};
   allTypes.forEach(t=>{ iconMap[t.name]=t.icon; });
   investmentCustomCats.forEach(c=>{ iconMap[c.name]=c.icon; });
-  // ✨ FIX #3/#5: ensure any type used in entries has an icon
   investments.forEach(e=>{ if(e.type && !iconMap[e.type]) iconMap[e.type] = ICONS[e.type] || "💡"; });
 
   const year = new Date().getFullYear();
   const keys = buildKeys(year);
   const totalAll = investments.reduce((s,e)=>s+e.amount,0);
 
-  function openEdit(entry) { setEditEntry(entry); setPresetType(null); setPanelOpen(true); }
-  function closePanel()    { setPanelOpen(false); setEditEntry(null); setPresetType(null); }
+  function openEdit(entry) { setEditEntry(entry); setPresetType(null); setPresetCustomTagId(null); setPanelOpen(true); }
+  function closePanel()    { setPanelOpen(false); setEditEntry(null); setPresetType(null); setPresetCustomTagId(null); }
 
-  function openTypeDetail(typeName, typeIcon) {
-    setActiveType({ name: typeName, icon: typeIcon });
-  }
+  function openTypeDetail(typeName, typeIcon) { setActiveType({ name: typeName, icon: typeIcon }); }
+  function openCustomDetail(customCat) { setActiveCustom(customCat); }
 
-  function openCustomDetail(customCat) {
-    setActiveCustom(customCat);
-  }
-
-  // ✨ NEW (#6): delete a custom category
   async function deleteCustomCat(cat) {
     if (!confirm(`Delete custom category "${cat.name}"? Your entries stay safe — they just won't be grouped here anymore.`)) return;
     try {
@@ -533,47 +634,62 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
     </div>
   );
 
+  // ✨ FIX #1: Panels rendered alongside CategoryDetail (not below the early return), so they're always visible
+  const sharedPanels = (
+    <>
+      {panelOpen && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)} learnedCategories={learnedCategories} learnCategory={learnCategory} investments={investments} presetType={presetType} presetCustomTagId={presetCustomTagId}/>}
+      {manageTypes && <ManageTypesPanel open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>}
+      {showCustomPanel && <CustomCategoryPanel open={showCustomPanel} onClose={()=>{setShowCustomPanel(false); setEditCustomCat(null);}} uid={uid} kind="investment" investments={investments} editCategory={editCustomCat}/>}
+      {pickExistingOpen && activeCustom && <PickExistingPanel open={pickExistingOpen} onClose={()=>setPickExistingOpen(false)} uid={uid} investments={investments} customCat={activeCustom}/>}
+    </>
+  );
+
   // Drill-down for normal types
   if (activeType) {
     const typeEntries = investments.filter(e => (e.type || "Other") === activeType.name);
     return (
-      <CategoryDetail
-        categoryName={activeType.name}
-        categoryIcon={activeType.icon}
-        entries={typeEntries}
-        kind="investments"
-        onBack={() => setActiveType(null)}
-        onEdit={(entry) => { setActiveType(null); openEdit(entry); }}
-        onDelete={handleDelete}
-      />
+      <>
+        <CategoryDetail
+          categoryName={activeType.name} categoryIcon={activeType.icon}
+          entries={typeEntries} kind="investments"
+          onBack={() => setActiveType(null)}
+          onEdit={(entry) => openEdit(entry)}
+          onDelete={handleDelete}
+        />
+        {sharedPanels}
+      </>
     );
   }
 
-  // ✨ Drill-down for custom categories (with Add/Edit/Delete — #1, #2, #6)
+  // ✨ FIX #1, #2, #3: Drill-down for custom categories — panels always available
   if (activeCustom) {
-    const customEntries = investments.filter(e => 
-      Array.isArray(e.customTags) && e.customTags.includes(activeCustom.id)
-    );
+    const customEntries = investments.filter(e => Array.isArray(e.customTags) && e.customTags.includes(activeCustom.id));
     return (
-      <CategoryDetail
-        categoryName={activeCustom.name}
-        categoryIcon={activeCustom.icon}
-        entries={customEntries}
-        kind="investments"
-        isCustom
-        onBack={() => setActiveCustom(null)}
-        onEdit={(entry) => { setActiveCustom(null); openEdit(entry); }}
-        onDelete={handleDelete}
-        onAddEntry={() => { setPresetType(null); setEditEntry(null); setPanelOpen(true); }}
-        onEditCategory={() => { setEditCustomCat(activeCustom); setShowCustomPanel(true); }}
-        onDeleteCategory={() => deleteCustomCat(activeCustom)}
-      />
+      <>
+        <CategoryDetail
+          categoryName={activeCustom.name} categoryIcon={activeCustom.icon}
+          entries={customEntries} kind="investments" isCustom
+          onBack={() => setActiveCustom(null)}
+          onEdit={(entry) => openEdit(entry)}
+          onDelete={handleDelete}
+          onAddEntry={() => {
+            // ✨ FIX #2: auto-tag this entry with current custom category
+            setPresetType(null);
+            setPresetCustomTagId(activeCustom.id);
+            setEditEntry(null);
+            setPanelOpen(true);
+          }}
+          onPickExisting={() => setPickExistingOpen(true)} // ✨ FIX #3
+          onEditCategory={() => { setEditCustomCat(activeCustom); setShowCustomPanel(true); }}
+          onDeleteCategory={() => deleteCustomCat(activeCustom)}
+        />
+        {sharedPanels}
+      </>
     );
   }
 
   return(
     <div style={{opacity:vis?1:0,transform:vis?"none":"translateY(10px)",transition:"all .35s ease"}}>
-
       {!activeMonth&&(<>
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -608,35 +724,15 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
               <p className="text-xs" style={{color:"#6B7280", marginTop:"2px"}}>Platforms, projects, anything you want to track</p>
             </div>
             <button onClick={()=>{ setEditCustomCat(null); setShowCustomPanel(true); }}
-              style={{
-                padding:"6px 12px",
-                background:"linear-gradient(135deg,#34D399,#059669)",
-                border:"none",
-                borderRadius:"10px",
-                color:"#022C22",
-                fontSize:"11px",
-                fontWeight:"700",
-                cursor:"pointer",
-                fontFamily:"inherit",
-              }}>
+              style={{padding:"6px 12px",background:"linear-gradient(135deg,#34D399,#059669)",border:"none",borderRadius:"10px",color:"#022C22",fontSize:"11px",fontWeight:"700",cursor:"pointer",fontFamily:"inherit"}}>
               + Create
             </button>
           </div>
 
           {investmentCustomCats.length === 0 ? (
-            <div style={{
-              padding:"16px",
-              background:"rgba(52,211,153,0.04)",
-              border:"1px dashed rgba(52,211,153,0.2)",
-              borderRadius:"10px",
-              textAlign:"center",
-            }}>
-              <p style={{color:"#9CA3AF",fontSize:"12px",marginBottom:"4px"}}>
-                Create your first custom category!
-              </p>
-              <p style={{color:"#6B7280",fontSize:"10px",lineHeight:"1.5"}}>
-                Examples: "Binance" (all crypto), "Zerodha" (all stocks), "Real Estate" (property)
-              </p>
+            <div style={{padding:"16px",background:"rgba(52,211,153,0.04)",border:"1px dashed rgba(52,211,153,0.2)",borderRadius:"10px",textAlign:"center"}}>
+              <p style={{color:"#9CA3AF",fontSize:"12px",marginBottom:"4px"}}>Create your first custom category!</p>
+              <p style={{color:"#6B7280",fontSize:"10px",lineHeight:"1.5"}}>Examples: "Binance" (all crypto), "Zerodha" (all stocks), "Real Estate" (property)</p>
             </div>
           ) : (
             <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
@@ -645,21 +741,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
                 const total = entries.reduce((s,e) => s + Number(e.amount), 0);
                 return (
                   <button key={cat.id} onClick={() => openCustomDetail(cat)}
-                    style={{
-                      padding:"10px 14px",
-                      background:"rgba(52,211,153,0.08)",
-                      border:"1px solid rgba(52,211,153,0.2)",
-                      borderRadius:"10px",
-                      color:"#E5E7EB",
-                      fontSize:"12px",
-                      cursor:"pointer",
-                      fontFamily:"inherit",
-                      display:"flex",
-                      flexDirection:"column",
-                      alignItems:"flex-start",
-                      gap:"4px",
-                      minWidth:"140px",
-                    }}>
+                    style={{padding:"10px 14px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:"10px",color:"#E5E7EB",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:"4px",minWidth:"140px"}}>
                     <span style={{fontSize:"18px"}}>{cat.icon}</span>
                     <span style={{fontWeight:"600"}}>{cat.name}</span>
                     <span style={{color:"#34D399",fontFamily:"monospace",fontWeight:"700"}}>{fmt(total)}</span>
@@ -671,7 +753,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
           )}
         </div>
 
-        {/* ✨ FIX #3: All-Time Types built from ACTUAL entry types — FD/RD, Father always show */}
+        {/* All-Time Types from actual entries */}
         {(() => {
           const typeAgg = {};
           investments.forEach(e => {
@@ -681,9 +763,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
             typeAgg[t].count += 1;
           });
           const allTimeTypes = Object.values(typeAgg).sort((a,b) => b.total - a.total);
-
           if (allTimeTypes.length === 0) return null;
-
           return (
             <div style={{...card, padding: "16px", marginBottom: "20px"}}>
               <div className="flex items-center justify-between mb-3">
@@ -693,18 +773,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
               <div style={{display:"flex",flexWrap:"wrap",gap:"8px"}}>
                 {allTimeTypes.map(t => (
                   <button key={t.name} onClick={()=>openTypeDetail(t.name, t.icon)}
-                    style={{
-                      padding:"8px 12px",
-                      background:"rgba(52,211,153,0.06)",
-                      border:"1px solid rgba(52,211,153,0.15)",
-                      borderRadius:"10px",
-                      color:"#E5E7EB",fontSize:"12px",
-                      cursor:"pointer",fontFamily:"inherit",
-                      display:"flex",alignItems:"center",gap:"6px",
-                      transition:"all .15s",
-                    }}
-                    onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.12)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.06)";}}>
+                    style={{padding:"8px 12px",background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:"10px",color:"#E5E7EB",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"6px",transition:"all .15s"}}>
                     <span>{t.icon}</span>
                     <span>{t.name}</span>
                     <span style={{color:"#34D399",fontFamily:"monospace",fontWeight:600}}>{fmt(t.total)}</span>
@@ -729,9 +798,7 @@ export default function Investments({firestoreData, user, quickAddTrigger}){
           iconMap={iconMap} onTypeClick={openTypeDetail}/>
       )}
 
-      {panelOpen   && <EntryPanel open={panelOpen} onClose={closePanel} onSave={handleAdd} uid={uid} editEntry={editEntry} allTypes={allTypes} onManageTypes={()=>setManageTypes(true)} learnedCategories={learnedCategories} learnCategory={learnCategory} investments={investments} presetType={presetType}/>}
-      {manageTypes && <ManageTypesPanel open={manageTypes} onClose={()=>setManageTypes(false)} uid={uid} customTypes={categories}/>}
-      {showCustomPanel && <CustomCategoryPanel open={showCustomPanel} onClose={()=>{setShowCustomPanel(false); setEditCustomCat(null);}} uid={uid} kind="investment" investments={investments} editCategory={editCustomCat}/>}
+      {sharedPanels}
     </div>
   );
 }

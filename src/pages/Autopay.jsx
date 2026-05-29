@@ -18,19 +18,27 @@ function monthsBetween(startStr) {
   return (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
 }
 
-// ✨ NEW #8: FD/RD maturity calculator (compound interest)
-function calcMaturity(principal, annualRatePct, startStr, endStr) {
+// ✨ FIX #4: FD/RD maturity calculator with Simple/Compound mode toggle
+// "simple" matches bank receipts; "compound" matches quarterly-compounding FDs
+function calcMaturity(principal, annualRatePct, startStr, endStr, mode = "simple") {
   if (!principal || !annualRatePct || !startStr || !endStr) return null;
   const start = new Date(startStr);
   const end = new Date(endStr);
   if (end <= start) return null;
-  const years = (end - start) / (365.25 * 86400000);
+  const days = (end - start) / 86400000;
+  const years = days / 365; // 365-day year (banks use this)
   const r = Number(annualRatePct) / 100;
-  // Quarterly compounding (standard for Indian FDs)
-  const n = 4;
-  const maturity = Number(principal) * Math.pow(1 + r / n, n * years);
+  let maturity;
+  if (mode === "compound") {
+    // Quarterly compounding (standard cumulative FD)
+    const n = 4;
+    maturity = Number(principal) * Math.pow(1 + r / n, n * years);
+  } else {
+    // Simple interest (matches bank receipt for most short FDs)
+    maturity = Number(principal) * (1 + r * years);
+  }
   const interest = maturity - Number(principal);
-  return { maturity: Math.round(maturity), interest: Math.round(interest), years: years.toFixed(2) };
+  return { maturity: Math.round(maturity), interest: Math.round(interest), years: years.toFixed(2), mode };
 }
 
 const FREQ_OPTIONS = [
@@ -39,7 +47,7 @@ const FREQ_OPTIONS = [
   { label: "Half Yearly", value: "halfyearly",  days: 180 },
   { label: "Yearly",      value: "yearly",      days: 365 },
   { label: "Weekly",      value: "weekly",      days: 7   },
-  { label: "One-Time",    value: "onetime",     days: null }, // ✨ NEW #7: one-time (FD lump sum)
+  { label: "One-Time",    value: "onetime",     days: null },
   { label: "Custom",      value: "custom",      days: null },
 ];
 
@@ -55,14 +63,12 @@ export function getDaysUntilRenewal(sub) {
   return Math.ceil((renewal - today) / 86400000);
 }
 
-// ✨ NEW #7: is this a recurring autopay? (one-time FDs are NOT recurring)
 function isRecurring(sub) {
   return sub.frequency !== "onetime";
 }
 
-// ✨ #7: yearly cost only counts recurring autopays
 function yearlyCostOf(sub) {
-  if (!isRecurring(sub)) return 0; // one-time FD doesn't repeat yearly
+  if (!isRecurring(sub)) return 0;
   const freq = FREQ_OPTIONS.find(f => f.value === sub.frequency);
   const days = freq?.days || sub.customDays || 30;
   return (sub.amount / days) * 365;
@@ -85,9 +91,9 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
   const [paymentKind,setPaymentKind]=useState("spending");
   const [category,setCategory]=useState("");
   const [notes,setNotes]=useState(""); const [saving,setSaving]=useState(false);
-  // ✨ NEW #8: FD maturity fields
   const [maturityDate,setMaturityDate]=useState("");
   const [interestRate,setInterestRate]=useState("");
+  const [interestMode,setInterestMode]=useState("simple"); // ✨ NEW #4: simple or compound
 
   useEffect(() => {
     if (!open) return;
@@ -100,14 +106,16 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
       setPaymentKind(editSub.paymentKind || "spending");
       setCategory(editSub.category || "");
       setNotes(editSub.notes || "");
-      setMaturityDate(editSub.maturityDate || "");      // ✨
-      setInterestRate(editSub.interestRate ? String(editSub.interestRate) : ""); // ✨
+      setMaturityDate(editSub.maturityDate || "");
+      setInterestRate(editSub.interestRate ? String(editSub.interestRate) : "");
+      setInterestMode(editSub.interestMode || "simple"); // ✨
     } else {
       setName(""); setAmount(""); setIcon("📺");
       setFrequency("monthly"); setCustomDays(""); setNotes("");
       setPaymentKind("spending");
       setCategory("");
       setMaturityDate(""); setInterestRate("");
+      setInterestMode("simple"); // ✨ default Simple
       const today = new Date();
       setStartDate(today.toISOString().split("T")[0]);
       const d = new Date(); d.setDate(d.getDate() + 30);
@@ -125,9 +133,9 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
     }
   }, [paymentKind]);
 
-  // ✨ NEW #8: show maturity calc for investment autopays with an interest rate
   const isInvestment = paymentKind === "investment";
-  const maturityResult = isInvestment ? calcMaturity(amount, interestRate, startDate, maturityDate) : null;
+  // ✨ FIX #4: calc with chosen mode
+  const maturityResult = isInvestment ? calcMaturity(amount, interestRate, startDate, maturityDate, interestMode) : null;
 
   async function save() {
     if (!name.trim() || !amount || !nextRenewal || !startDate) return alert("Fill all fields");
@@ -140,9 +148,9 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
         startDate,
         paymentKind,
         category,
-        // ✨ NEW #8: save maturity fields (investment only)
         maturityDate: isInvestment && maturityDate ? maturityDate : null,
         interestRate: isInvestment && interestRate ? parseFloat(interestRate) : null,
+        interestMode: isInvestment && interestRate ? interestMode : null, // ✨ NEW #4
         notes: notes.trim(), active: true, updatedAt: serverTimestamp(),
       };
       if (isEdit) {
@@ -169,7 +177,7 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
 
         <div className="px-5 pt-4 pb-4 space-y-3">
 
-          {/* Type Selector — Spending vs Investment */}
+          {/* Type Selector */}
           <div>
             <label className="text-xs uppercase tracking-wider block mb-2" style={{color:"#6B7280"}}>
               Type — Is this Spending or Investment?
@@ -184,9 +192,7 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
               }}>
                 <div style={{fontSize:"18px", marginBottom:"4px"}}>💸</div>
                 Spending
-                <p style={{fontSize:"10px", marginTop:"3px", opacity:0.7, fontWeight:400}}>
-                  Netflix, Gym, Bills
-                </p>
+                <p style={{fontSize:"10px", marginTop:"3px", opacity:0.7, fontWeight:400}}>Netflix, Gym, Bills</p>
               </button>
               <button onClick={()=>setPaymentKind("investment")} style={{
                 flex:1, padding:"12px", borderRadius:"10px", cursor:"pointer", fontFamily:"inherit",
@@ -197,9 +203,7 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
               }}>
                 <div style={{fontSize:"18px", marginBottom:"4px"}}>📈</div>
                 Investment
-                <p style={{fontSize:"10px", marginTop:"3px", opacity:0.7, fontWeight:400}}>
-                  SIP, RD, FD, NPS
-                </p>
+                <p style={{fontSize:"10px", marginTop:"3px", opacity:0.7, fontWeight:400}}>SIP, RD, FD, NPS</p>
               </button>
             </div>
           </div>
@@ -246,7 +250,6 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
             <select value={frequency} onChange={e=>setFrequency(e.target.value)} style={selectStyle}>
               {FREQ_OPTIONS.map(f=>(<option key={f.value} value={f.value} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal",fontWeight:"normal"}}>{f.label}</option>))}
             </select>
-            {/* ✨ #7: explain one-time so the FD-vs-recurring confusion is gone */}
             {frequency === "onetime" && (
               <p style={{color:"#FBBF24",fontSize:"11px",marginTop:"6px",lineHeight:1.5}}>
                 ⓘ One-Time means a single lump-sum (like an FD). It won't be counted in your recurring yearly cost.
@@ -275,7 +278,7 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
             <input type="date" value={nextRenewal} onChange={e=>setNextRenewal(e.target.value)} style={inp}/>
           </div>
 
-          {/* ✨ NEW #8: FD maturity calculator — investment autopays only */}
+          {/* ✨ NEW #4: FD/RD maturity calculator with Simple/Compound toggle */}
           {isInvestment && (
             <div style={{
               padding:"14px", borderRadius:"12px",
@@ -295,6 +298,34 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
                   <input type="date" value={maturityDate} onChange={e=>setMaturityDate(e.target.value)} style={inp}/>
                 </div>
               </div>
+
+              {/* ✨ NEW #4: Simple / Compound mode toggle */}
+              <div style={{marginBottom:"10px"}}>
+                <label className="text-xs block mb-1.5" style={{color:"#6B7280"}}>Interest Type</label>
+                <div style={{display:"flex",gap:"8px"}}>
+                  <button onClick={()=>setInterestMode("simple")} style={{
+                    flex:1, padding:"10px 8px", borderRadius:"10px", cursor:"pointer", fontFamily:"inherit",
+                    background: interestMode==="simple" ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)",
+                    border: interestMode==="simple" ? "1px solid rgba(52,211,153,0.35)" : "1px solid rgba(255,255,255,0.08)",
+                    color: interestMode==="simple" ? "#34D399" : "#9CA3AF",
+                    fontSize:"11px", fontWeight:600, textAlign:"center",
+                  }}>
+                    Simple Interest
+                    <p style={{fontSize:"9px", marginTop:"2px", opacity:0.7, fontWeight:400}}>Matches bank receipt</p>
+                  </button>
+                  <button onClick={()=>setInterestMode("compound")} style={{
+                    flex:1, padding:"10px 8px", borderRadius:"10px", cursor:"pointer", fontFamily:"inherit",
+                    background: interestMode==="compound" ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)",
+                    border: interestMode==="compound" ? "1px solid rgba(52,211,153,0.35)" : "1px solid rgba(255,255,255,0.08)",
+                    color: interestMode==="compound" ? "#34D399" : "#9CA3AF",
+                    fontSize:"11px", fontWeight:600, textAlign:"center",
+                  }}>
+                    Compound (Qly)
+                    <p style={{fontSize:"9px", marginTop:"2px", opacity:0.7, fontWeight:400}}>Cumulative FD</p>
+                  </button>
+                </div>
+              </div>
+
               {maturityResult ? (
                 <div style={{
                   padding:"12px", borderRadius:"10px",
@@ -310,7 +341,7 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
                     <span style={{color:"#FBBF24",fontSize:"12px",fontWeight:600,fontFamily:"monospace"}}>+{fmt(maturityResult.interest)}</span>
                   </div>
                   <p style={{color:"#6B7280",fontSize:"9px",marginTop:"6px",fontStyle:"italic"}}>
-                    *Estimated, quarterly compounding
+                    *{interestMode === "simple" ? "Simple interest formula (matches most bank FD receipts)" : "Quarterly compounding (standard cumulative FD)"}
                   </p>
                 </div>
               ) : (
@@ -338,7 +369,6 @@ function AutopayPanel({ open, onClose, editSub, uid }) {
   );
 }
 
-// Renewed Panel — uses paymentKind + category
 function RenewedPanel({ open, sub, onClose, onRenew, uid }) {
   const [saving, setSaving] = useState(false);
   const [alsoAdd, setAlsoAdd] = useState(true);
@@ -488,7 +518,6 @@ export default function Autopay({ user, quickAddTrigger }) {
 
   const upcomingCount = subs.filter(s => getDaysUntilRenewal(s) <= 3 && s.active).length;
 
-  // ✨ #7: monthly + yearly recurring totals EXCLUDE one-time FDs
   const monthlyTotal  = subs.filter(s => s.active && isRecurring(s)).reduce((sum, s) => {
     const freq = FREQ_OPTIONS.find(f => f.value === s.frequency);
     const days = freq?.days || s.customDays || 30;
@@ -502,7 +531,6 @@ export default function Autopay({ user, quickAddTrigger }) {
   const investYearly = subs.filter(s => s.active && s.paymentKind === "investment").reduce((sum, s) => sum + yearlyCostOf(s), 0);
   const spendYearly = subs.filter(s => s.active && (s.paymentKind || "spending") === "spending").reduce((sum, s) => sum + yearlyCostOf(s), 0);
 
-  // ✨ #7: count of one-time investments (FDs) for an explainer
   const oneTimeCount = subs.filter(s => s.active && !isRecurring(s)).length;
 
   return (
@@ -526,7 +554,6 @@ export default function Autopay({ user, quickAddTrigger }) {
         ))}
       </div>
 
-      {/* ✨ #7: Split breakdown — clearer labels: "recurring per year" */}
       {(spendCount > 0 || investCount > 0) && (
         <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"12px"}}>
           <div style={{...card, padding:"12px", background:"rgba(248,113,113,0.04)", border:"1px solid rgba(248,113,113,0.15)"}}>
@@ -548,7 +575,6 @@ export default function Autopay({ user, quickAddTrigger }) {
         </div>
       )}
 
-      {/* ✨ #7: Clear yearly cost banner with explainer that one-time FDs are excluded */}
       {yearlyTotal > 0 && (
         <div style={{
           ...card,
@@ -575,7 +601,6 @@ export default function Autopay({ user, quickAddTrigger }) {
         </div>
       )}
 
-      {/* Kind filter */}
       <div className="flex gap-2 mb-3" style={{overflowX:"auto", paddingBottom:"4px"}}>
         {[
           ["all","All Types",null,null],
@@ -595,7 +620,6 @@ export default function Autopay({ user, quickAddTrigger }) {
         ))}
       </div>
 
-      {/* Status filter */}
       <div className="flex gap-2 mb-4">
         {[["all","All"],["upcoming","Upcoming"],["active","Active"]].map(([id,label])=>(
           <button key={id} onClick={()=>setFilter(id)} className="px-3 py-1.5 rounded-xl text-xs font-semibold"
@@ -640,9 +664,9 @@ export default function Autopay({ user, quickAddTrigger }) {
             const subKind = sub.paymentKind || "spending";
             const isInv = subKind === "investment";
 
-            // ✨ #8: maturity info if present
+            // ✨ FIX #4: use saved interestMode
             const maturity = (isInv && sub.interestRate && sub.maturityDate)
-              ? calcMaturity(sub.amount, sub.interestRate, sub.startDate, sub.maturityDate)
+              ? calcMaturity(sub.amount, sub.interestRate, sub.startDate, sub.maturityDate, sub.interestMode || "simple")
               : null;
 
             return (
@@ -664,7 +688,6 @@ export default function Autopay({ user, quickAddTrigger }) {
                         }}>
                           {isInv ? "📈 INV" : "💸 SPD"}
                         </span>
-                        {/* ✨ #7: one-time badge */}
                         {!recurring && (
                           <span style={{
                             padding:"1px 6px", background:"rgba(251,191,36,0.12)",
@@ -709,7 +732,7 @@ export default function Autopay({ user, quickAddTrigger }) {
                   </div>
                 )}
 
-                {/* ✨ #8: FD maturity display */}
+                {/* ✨ FIX #4: show mode in card */}
                 {maturity && (
                   <div style={{
                     marginTop:"8px", padding:"10px 12px",
@@ -718,7 +741,9 @@ export default function Autopay({ user, quickAddTrigger }) {
                     borderRadius:"8px",
                   }}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{color:"#9CA3AF",fontSize:"10px"}}>🏦 Matures {fmtDate(sub.maturityDate)} @ {sub.interestRate}%</span>
+                      <span style={{color:"#9CA3AF",fontSize:"10px"}}>
+                        🏦 Matures {fmtDate(sub.maturityDate)} @ {sub.interestRate}% ({maturity.mode === "compound" ? "Compound" : "Simple"})
+                      </span>
                       <span style={{color:"#34D399",fontSize:"13px",fontWeight:700,fontFamily:"monospace"}}>{fmt(maturity.maturity)}</span>
                     </div>
                     <p style={{color:"#FBBF24",fontSize:"10px",marginTop:"3px",textAlign:"right",fontFamily:"monospace"}}>
@@ -727,7 +752,6 @@ export default function Autopay({ user, quickAddTrigger }) {
                   </div>
                 )}
 
-                {/* ✨ #7: only show yearly cost for recurring */}
                 {sub.active && recurring && (
                   <p style={{color:"#FBBF24", fontSize:"10px", fontStyle:"italic", marginTop:"6px", textAlign:"center"}}>
                     ≈ {fmt(Math.round(yearlyCost))}/year (recurring)

@@ -2,12 +2,23 @@ import { useState, useEffect, useRef } from "react";
 
 export default function QuickAddMenu({ onAdd }) {
   const [open, setOpen] = useState(false);
+  const [presetCtx, setPresetCtx] = useState(null); // ✨ NEW: current drill-down context
   const ref = useRef(null);
 
   useEffect(() => {
     function handle(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  // ✨ NEW: Listen for changes to current drill-down context (set by Investments/Spending pages)
+  useEffect(() => {
+    function syncCtx() {
+      setPresetCtx(window.__dhanPresetContext || null);
+    }
+    syncCtx(); // initial
+    window.addEventListener("dhan-preset-changed", syncCtx);
+    return () => window.removeEventListener("dhan-preset-changed", syncCtx);
   }, []);
 
   const actions = [
@@ -21,10 +32,55 @@ export default function QuickAddMenu({ onAdd }) {
     onAdd(id);
   }
 
+  // ✨ NEW: When inside a category, + button skips chooser and dispatches directly
+  function handleFabClick() {
+    if (presetCtx) {
+      // We're inside a category/type/custom drill-down → add directly into it
+      window.dispatchEvent(new CustomEvent("dhan-preset-add", { detail: presetCtx }));
+      return;
+    }
+    // Otherwise show the normal chooser
+    setOpen(o => !o);
+  }
+
+  // ✨ NEW: Color & icon based on context
+  const inPreset = !!presetCtx;
+  const isInvestmentCtx = presetCtx?.page === "investments";
+  const fabBg = inPreset
+    ? (isInvestmentCtx
+        ? "linear-gradient(135deg,#34D399,#059669)"
+        : "linear-gradient(135deg,#F87171,#ef4444)")
+    : (open ? "linear-gradient(135deg,#F87171,#ef4444)" : "linear-gradient(135deg,#34D399,#059669)");
+  const fabShadow = inPreset
+    ? (isInvestmentCtx ? "0 8px 20px rgba(52,211,153,0.4)" : "0 8px 20px rgba(248,113,113,0.4)")
+    : (open ? "0 8px 20px rgba(248,113,113,0.4)" : "0 8px 20px rgba(52,211,153,0.4)");
+
   return (
     <div ref={ref} className="fixed bottom-20 right-5 md:bottom-6 z-30">
-      {/* Popup menu */}
-      {open && (
+      {/* ✨ NEW: Tooltip showing where + will add (inside drill-down) */}
+      {inPreset && (
+        <div style={{
+          position: "absolute",
+          bottom: "62px",
+          right: "0",
+          background: "linear-gradient(145deg,#1A2333,#0F172A)",
+          border: `1px solid ${isInvestmentCtx ? "rgba(52,211,153,0.3)" : "rgba(248,113,113,0.3)"}`,
+          borderRadius: "10px",
+          padding: "6px 10px",
+          fontSize: "11px",
+          color: isInvestmentCtx ? "#34D399" : "#F87171",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          fontFamily: "inherit",
+          boxShadow: "0 4px 15px rgba(0,0,0,0.4)",
+          pointerEvents: "none",
+        }}>
+          + Add to "{presetCtx.label}"
+        </div>
+      )}
+
+      {/* Popup menu — only when NOT in a category drill-down */}
+      {open && !inPreset && (
         <div style={{
           position: "absolute",
           bottom: "60px",
@@ -58,15 +114,15 @@ export default function QuickAddMenu({ onAdd }) {
       )}
 
       {/* + Button */}
-      <button onClick={()=>setOpen(o=>!o)}
+      <button onClick={handleFabClick}
         className="flex items-center justify-center rounded-full transition-all hover:scale-110"
         style={{
           width:"54px", height:"54px",
-          background: open ? "linear-gradient(135deg,#F87171,#ef4444)" : "linear-gradient(135deg,#34D399,#059669)",
+          background: fabBg,
           border:"none", color:"#fff", fontSize:"28px",
           cursor:"pointer",
-          boxShadow: open ? "0 8px 20px rgba(248,113,113,0.4)" : "0 8px 20px rgba(52,211,153,0.4)",
-          transform: open ? "rotate(45deg)" : "rotate(0deg)",
+          boxShadow: fabShadow,
+          transform: (open && !inPreset) ? "rotate(45deg)" : "rotate(0deg)",
           transition: "all 0.2s",
         }}>
         +
