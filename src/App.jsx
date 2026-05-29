@@ -189,13 +189,23 @@ export default function App() {
   }
 
   function handleQuickAdd(type) {
-    const pageMap = { investment: "investments", spending: "spending", autopay: "autopay" };
-    setQuickAddTrigger(null);
-    setPage(pageMap[type]);
+  const pageMap = { investment: "investments", spending: "spending", autopay: "autopay" };
+  const targetPage = pageMap[type];
+  const ctx = window.__dhanPresetContext;
+
+  setQuickAddTrigger(null);
+  setPage(targetPage);
+
+  if (ctx && ctx.page === targetPage) {
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("dhan-preset-add", { detail: ctx }));
+    }, 100);
+  } else {
     setTimeout(() => {
       setQuickAddTrigger({ type, ts: Date.now() });
     }, 100);
   }
+}
 
   // ✨ NEW: When user taps a search result, navigate to that page
   function handleSearchNavigate(targetPage) {
