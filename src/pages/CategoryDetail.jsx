@@ -19,6 +19,7 @@ export default function CategoryDetail({
   onBack,
   onEdit,
   onDelete,
+  onUntag,           // ✨ FIX (#2): custom only — remove customTag instead of permanently deleting
   onAddEntry,        // custom only — open Add Entry form
   onPickExisting,    // ✨ NEW (#3) custom only — open picker to tag existing entries
   onEditCategory,
@@ -289,9 +290,12 @@ export default function CategoryDetail({
                       <Pencil/>
                     </button>
                   )}
-                  {onDelete && (
+                  {/* ✨ FIX (#2): inside a custom category, ✕ untags (keeps entry); elsewhere it deletes */}
+                  {(isCustom && onUntag) ? (
+                    <button onClick={() => onUntag(entry.id)} title="Remove from this category" style={{ color: "#F87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "8px", padding: "6px 8px", cursor: "pointer", fontSize: "12px" }}>✕</button>
+                  ) : onDelete ? (
                     <button onClick={() => onDelete(kind === "investments" ? "investments" : "spendings", entry.id)} title="Delete" style={{ color: "#F87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: "8px", padding: "6px 8px", cursor: "pointer", fontSize: "12px" }}>✕</button>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>

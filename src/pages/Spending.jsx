@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { db } from "../firebase/config";
-import { doc, updateDoc, deleteDoc, collection, addDoc, writeBatch } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, collection, addDoc, writeBatch, arrayRemove } from "firebase/firestore";
 import CategoryDetail from "./CategoryDetail";
 import CustomCategoryPanel from "../components/CustomCategoryPanel";
 import { suggestCategory, extractMerchant } from "../utils/keywordMap";
@@ -617,6 +617,16 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
     await deleteEntry(kind,id);
   },[deleteEntry]);
 
+  // ✨ FIX #2: untag an entry from the active custom category (keeps the entry itself)
+  const handleUntag = useCallback(async(entryId)=>{
+    if (!activeCustom) return;
+    try {
+      await updateDoc(doc(db, "users", uid, "spendings", entryId), {
+        customTags: arrayRemove(activeCustom.id),
+      });
+    } catch(e) { alert("Failed: " + e.message); }
+  },[activeCustom, uid]);
+
   if(loading) return(
     <div style={{paddingTop:"24px",display:"flex",flexDirection:"column",gap:"12px"}}>
       {[1,2,3].map(i=><div key={i} style={{...card,height:"80px",opacity:0.5}}/>)}
@@ -661,6 +671,7 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
           onBack={() => setActiveCustom(null)}
           onEdit={(entry) => openEdit(entry)}
           onDelete={handleDelete}
+          onUntag={handleUntag}
           onAddEntry={() => {
             setPresetType(null);
             setPresetCustomTagId(activeCustom.id);
