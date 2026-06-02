@@ -56,28 +56,34 @@ function BarChart({ months, investments, spendings }) {
     spe: spendings.filter(e => mkey(e.date) === mk).reduce((s, e) => s + e.amount, 0),
   }));
   const maxVal = Math.max(...vals.flatMap(v => [v.inv, v.spe]), 1);
-  const H = 120, W = 300, barW = 18, gap = 8;
-  const groupW = barW * 2 + gap + 12;
+  const H = 160, W = 340, barW = 22, gap = 10, padX = 16;
+  const groupW = (W - padX * 2) / vals.length;
   return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H + 30}`} style={{ overflow: "visible" }}>
+    <svg
+      viewBox={`0 0 ${W} ${H + 40}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ width: "100%", maxHeight: "220px", display: "block" }}
+    >
       {vals.map((v, i) => {
-        const x = i * groupW + 10;
+        const groupX = padX + i * groupW;
+        const cx = groupX + groupW / 2;
         const invH = (v.inv / maxVal) * H;
         const speH = (v.spe / maxVal) * H;
         return (
           <g key={v.mk}>
-            <rect x={x} y={H - invH} width={barW} height={invH} rx="4" fill="rgba(52,211,153,0.7)"/>
-            <rect x={x + barW + gap} y={H - speH} width={barW} height={speH} rx="4" fill="rgba(248,113,113,0.7)"/>
-            <text x={x + barW} y={H + 16} textAnchor="middle" fill="#6B7280" fontSize="9">
+            <rect x={cx - barW - gap / 2} y={H - invH} width={barW} height={invH} rx="4" fill="rgba(52,211,153,0.7)"/>
+            <rect x={cx + gap / 2}        y={H - speH} width={barW} height={speH} rx="4" fill="rgba(248,113,113,0.7)"/>
+            <text x={cx} y={H + 18} textAnchor="middle" fill="#6B7280" fontSize="11">
               {mlabel(v.mk).slice(0, 3)}
             </text>
           </g>
         );
       })}
-      <circle cx={W - 90} cy={H + 20} r="4" fill="rgba(52,211,153,0.7)"/>
-      <text x={W - 83} y={H + 24} fill="#9CA3AF" fontSize="9">Invest</text>
-      <circle cx={W - 50} cy={H + 20} r="4" fill="rgba(248,113,113,0.7)"/>
-      <text x={W - 43} y={H + 24} fill="#9CA3AF" fontSize="9">Spend</text>
+      {/* Legend */}
+      <circle cx={W / 2 - 60} cy={H + 36} r="4" fill="rgba(52,211,153,0.7)"/>
+      <text x={W / 2 - 52} y={H + 40} fill="#9CA3AF" fontSize="11">Invest</text>
+      <circle cx={W / 2 + 20} cy={H + 36} r="4" fill="rgba(248,113,113,0.7)"/>
+      <text x={W / 2 + 28} y={H + 40} fill="#9CA3AF" fontSize="11">Spend</text>
     </svg>
   );
 }
