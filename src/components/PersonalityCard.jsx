@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { getPersonality } from "../utils/personalityEngine";
+import { saveOrShareImage } from "../utils/shareImage";
 
 const card = {
   background: "linear-gradient(145deg,#1A2333,#0F172A)",
@@ -186,36 +187,17 @@ export default function PersonalityCard({ firestoreData, autopayList = [], user 
       const blob = await generateShareImage(p, user?.name);
       if (!blob) throw new Error("Failed to generate image");
 
-      // Try Web Share API first (mobile)
-      if (navigator.share && navigator.canShare) {
-        const file = new File([blob], `dhantrack-${p.id}.png`, { type: "image/png" });
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: "My DhanTrack Personality",
-            text: `I'm a ${p.name}! ${p.fact}\n\nFind your money personality on DhanTrack!`,
-          });
-          setShareMessage("Shared! 🎉");
-          setTimeout(() => setShareMessage(""), 3000);
-          setSharing(false);
-          return;
-        }
-      }
+      // ✨ FIX: use shared helper — native share sheet on device, download on desktop
+      const outcome = await saveOrShareImage(blob, `dhantrack-personality-${p.id}.png`, {
+        title: "My DhanTrack Personality",
+        text: `I'm a ${p.name}! ${p.fact}\n\nFind your money personality on DhanTrack!`,
+      });
 
-      // Fallback: download image
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `dhantrack-personality-${p.id}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setShareMessage("Image saved! Share it anywhere 🎉");
+      setShareMessage(outcome === "shared" ? "Opened share sheet 🎉" : "Image downloaded 🎉");
       setTimeout(() => setShareMessage(""), 3000);
     } catch (e) {
       console.error("Share error:", e);
+      // User cancelling the native share sheet also lands here — keep it gentle
       setShareMessage("Couldn't share. Try again?");
       setTimeout(() => setShareMessage(""), 3000);
     }

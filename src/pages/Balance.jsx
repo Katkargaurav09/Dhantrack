@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { saveOrShareImage } from "../utils/shareImage";
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DEFAULT_CATS=["Food","Travel","Shopping","Entertainment","Course","Electronics","Health","Utilities","Rent","Fuel","Other"];
@@ -76,67 +77,129 @@ function BarChart({ months, investments, spendings }) {
   );
 }
 
-function exportPDF(investments, spendings, totalInvested, totalSpent, netBalance) {
+// ── Streak (same logic as Home) — used by Health Score "Consistency" ──
+function computeStreak(investments, spendings) {
+  const allDates = new Set([...investments.map(e=>e.date),...spendings.map(e=>e.date)]);
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today); d.setDate(d.getDate()-i);
+    const key = d.toISOString().split("T")[0];
+    if (allDates.has(key)) streak++;
+    else if (i > 0) break;
+  }
+  return streak;
+}
+
+// ── Health Score: only components we can calculate today ──
+// Savings 35 · Investing 30 · Consistency 20 · Subscriptions 15  (= 100)
+function computeHealthScore({ totalInvested, totalSpent, investments, spendings, streak, autopayMonthly }) {
+  // 1. Savings rate — savings ÷ (savings+spend). >=20% savings = full points.
+  const savings = totalInvested - totalSpent;
+  const denom = totalInvested + totalSpent;
+  let savingsPts = 0;
+  if (denom > 0) {
+    const rate = savings / denom; // can be negative if overspending
+    savingsPts = Math.max(0, Math.min(1, rate / 0.2)) * 35;
+  }
+
+  // 2. Investing habit — having regular investments. 10+ entries = full.
+  const investPts = Math.max(0, Math.min(1, investments.length / 10)) * 30;
+
+  // 3. Consistency — tracking streak. 14-day streak = full.
+  const consistencyPts = Math.max(0, Math.min(1, streak / 14)) * 20;
+
+  // 4. Subscription health — penalty if autopay > ₹2,000/month.
+  let subsPts = 15;
+  if (autopayMonthly > 2000) {
+    const over = Math.min(1, (autopayMonthly - 2000) / 3000); // fully penalised at +₹3k over
+    subsPts = 15 * (1 - over);
+  }
+
+  const components = [
+    { label: "Savings Rate",   pts: Math.round(savingsPts),     max: 35, tip: "Save 20%+ of your money for full points." },
+    { label: "Investing",      pts: Math.round(investPts),      max: 30, tip: "Invest regularly — 10+ entries unlocks full points." },
+    { label: "Consistency",    pts: Math.round(consistencyPts), max: 20, tip: "Track daily — a 14-day streak gives full points." },
+    { label: "Subscriptions",  pts: Math.round(subsPts),        max: 15, tip: "Keep autopay under ₹2,000/month." },
+  ];
+  const total = components.reduce((s, c) => s + c.pts, 0);
+  return { total: Math.max(0, Math.min(100, total)), components };
+}
+
+// ✨ FIXED export: draw the report on a canvas and share via the shared helper
+async function exportReportImage(investments, spendings, totalInvested, totalSpent, netBalance) {
   const now   = new Date();
   const month = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
   const cm    = mkey(now.toISOString());
-  const mInv  = investments.filter(e => mkey(e.date) === cm);
-  const mSpe  = spendings.filter(e => mkey(e.date) === cm);
-  const html = `
-    <!DOCTYPE html><html><head><title>DhanTrack Report - ${month}</title>
-    <style>* { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Arial, sans-serif; padding: 32px; color: #111; background:#fff; }
-    .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; padding-bottom:16px; border-bottom:2px solid #e5e7eb; }
-    .logo { font-size:22px; font-weight:800; color:#059669; }
-    .date { font-size:13px; color:#6b7280; }
-    .summary { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
-    .box { background:#f9fafb; border-radius:10px; padding:16px; border:1px solid #e5e7eb; }
-    .box-label { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:#6b7280; margin-bottom:6px; }
-    .box-val { font-size:22px; font-weight:700; }
-    .green { color:#059669; } .red { color:#ef4444; } .gold { color:#d97706; }
-    h3 { font-size:14px; font-weight:700; color:#374151; margin-bottom:10px; margin-top:20px; }
-    table { width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed; }
-    th { background:#f3f4f6; padding:8px 10px; text-align:left; font-weight:600; color:#374151; border:1px solid #e5e7eb; }
-    td { padding:7px 10px; border:1px solid #e5e7eb; color:#374151; word-wrap:break-word; }
-    th:nth-child(1), td:nth-child(1) { width:80px; }
-    th:nth-child(2), td:nth-child(2) { width:25%; }
-    th:nth-child(3), td:nth-child(3) { width:18%; }
-    th:nth-child(4), td:nth-child(4) { width:15%; text-align:right; }
-    th:nth-child(5), td:nth-child(5) { width:auto; }
-    tr:nth-child(even) { background:#fafafa; }
-    .footer { margin-top:32px; text-align:center; font-size:11px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:12px; }
-    </style></head><body>
-    <div class="header">
-      <div class="logo">💰 DhanTrack</div>
-      <div class="date">Report for ${month}</div>
-    </div>
-    <div class="summary">
-      <div class="box"><div class="box-label">Net Savings</div><div class="box-val ${netBalance>=0?"gold":"red"}">${netBalance>=0?"+":""}₹${Math.abs(netBalance).toLocaleString("en-IN")}</div></div>
-      <div class="box"><div class="box-label">Total Invested</div><div class="box-val green">₹${totalInvested.toLocaleString("en-IN")}</div></div>
-      <div class="box"><div class="box-label">Total Spent</div><div class="box-val red">₹${totalSpent.toLocaleString("en-IN")}</div></div>
-    </div>
-    <h3>📈 This Month's Investments (${mInv.length} entries)</h3>
-    ${mInv.length === 0 ? "<p style='color:#9ca3af;font-size:12px'>No investments this month</p>" : `
-    <table><tr><th>Date</th><th>Name</th><th>Type</th><th>Amount</th><th>Note</th></tr>
-    ${mInv.map(e=>`<tr><td>${e.date}</td><td>${e.name}</td><td>${e.type}</td><td>₹${Number(e.amount).toLocaleString("en-IN")}</td><td>${e.note||"-"}</td></tr>`).join("")}
-    <tr><td colspan="3" style="font-weight:700">Total</td><td style="font-weight:700;color:#059669">₹${mInv.reduce((s,e)=>s+e.amount,0).toLocaleString("en-IN")}</td><td></td></tr>
-    </table>`}
-    <h3>💸 This Month's Spending (${mSpe.length} entries)</h3>
-    ${mSpe.length === 0 ? "<p style='color:#9ca3af;font-size:12px'>No spending this month</p>" : `
-    <table><tr><th>Date</th><th>Name</th><th>Category</th><th>Amount</th><th>Note</th></tr>
-    ${mSpe.map(e=>`<tr><td>${e.date}</td><td>${e.name}</td><td>${e.type}</td><td>₹${Number(e.amount).toLocaleString("en-IN")}</td><td>${e.note||"-"}</td></tr>`).join("")}
-    <tr><td colspan="3" style="font-weight:700">Total</td><td style="font-weight:700;color:#ef4444">₹${mSpe.reduce((s,e)=>s+e.amount,0).toLocaleString("en-IN")}</td><td></td></tr>
-    </table>`}
-    <div class="footer">Generated by DhanTrack · ${new Date().toLocaleDateString("en-IN",{day:"numeric",month:"long",year:"numeric"})}</div>
-    </body></html>`;
-  const w = window.open("", "_blank");
-  w.document.write(html); w.document.close(); w.focus();
-  setTimeout(() => { w.print(); }, 500);
+  const mInv  = investments.filter(e => mkey(e.date) === cm).reduce((s,e)=>s+e.amount,0);
+  const mSpe  = spendings.filter(e => mkey(e.date) === cm).reduce((s,e)=>s+e.amount,0);
+  const mInvN = investments.filter(e => mkey(e.date) === cm).length;
+  const mSpeN = spendings.filter(e => mkey(e.date) === cm).length;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080; canvas.height = 1350;
+  const ctx = canvas.getContext("2d");
+
+  const bg = ctx.createLinearGradient(0,0,0,1350);
+  bg.addColorStop(0,"#0B0F1A"); bg.addColorStop(1,"#020617");
+  ctx.fillStyle = bg; ctx.fillRect(0,0,1080,1350);
+
+  ctx.globalAlpha = 0.12; ctx.fillStyle = "#34D399";
+  ctx.beginPath(); ctx.arc(920,180,260,0,2*Math.PI); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#34D399"; ctx.font = "bold 56px system-ui, sans-serif";
+  ctx.fillText("💰 DhanTrack", 540, 150);
+  ctx.fillStyle = "#9CA3AF"; ctx.font = "34px system-ui";
+  ctx.fillText(`Report for ${month}`, 540, 210);
+
+  // Net savings hero
+  const pos = netBalance >= 0;
+  ctx.fillStyle = "#6B7280"; ctx.font = "30px system-ui";
+  ctx.fillText("NET SAVINGS", 540, 360);
+  ctx.fillStyle = pos ? "#FBBF24" : "#F87171"; ctx.font = "bold 110px system-ui";
+  ctx.fillText(`${pos?"+":"-"}₹${Math.abs(netBalance).toLocaleString("en-IN")}`, 540, 480);
+
+  // Two boxes: invested / spent
+  function box(x, label, value, color) {
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
+    ctx.fillRect(x, 580, 420, 200);
+    ctx.fillStyle = "#6B7280"; ctx.font = "28px system-ui"; ctx.textAlign = "center";
+    ctx.fillText(label, x + 210, 650);
+    ctx.fillStyle = color; ctx.font = "bold 58px system-ui";
+    ctx.fillText(`₹${value.toLocaleString("en-IN")}`, x + 210, 730);
+  }
+  box(90, "TOTAL INVESTED", totalInvested, "#34D399");
+  box(570, "TOTAL SPENT", totalSpent, "#F87171");
+
+  // This month lines
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#E5E7EB"; ctx.font = "bold 40px system-ui";
+  ctx.fillText("This Month", 90, 920);
+  ctx.fillStyle = "#9CA3AF"; ctx.font = "34px system-ui";
+  ctx.fillText(`📈 Invested:  ₹${mInv.toLocaleString("en-IN")}  (${mInvN} ${mInvN===1?"entry":"entries"})`, 90, 990);
+  ctx.fillText(`💸 Spent:      ₹${mSpe.toLocaleString("en-IN")}  (${mSpeN} ${mSpeN===1?"entry":"entries"})`, 90, 1050);
+
+  // Footer
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#34D399"; ctx.font = "bold 36px system-ui";
+  ctx.fillText("Track your money smarter", 540, 1230);
+  ctx.fillStyle = "#6B7280"; ctx.font = "28px system-ui";
+  ctx.fillText("dhantrack-one.vercel.app", 540, 1280);
+
+  const blob = await new Promise(res => canvas.toBlob(res, "image/png", 0.95));
+  return saveOrShareImage(blob, `dhantrack-report-${cm}.png`, {
+    title: `DhanTrack Report — ${month}`,
+    text: `My DhanTrack summary for ${month}: Net ${pos?"+":"-"}₹${Math.abs(netBalance).toLocaleString("en-IN")}`,
+  });
 }
 
 export default function Balance({ firestoreData }) {
   const [vis,setVis]=useState(false); const [barW,setBarW]=useState(50);
   const [tab,setTab]=useState("overview");
+  const [exporting,setExporting]=useState(false);
+  const [exportMsg,setExportMsg]=useState("");
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
 
   const { investments=[], spendings=[], categories=[], totalInvested=0, totalSpent=0, netBalance=0, loading=false } = firestoreData || {};
@@ -154,7 +217,6 @@ export default function Balance({ firestoreData }) {
   const best  = monthStats.length ? monthStats.reduce((a,b)=>b.net>a.net?b:a) : null;
   const worst = monthStats.length ? monthStats.reduce((a,b)=>b.net<a.net?b:a) : null;
 
-  // ✨ FIXED: Use ALL category names (defaults + custom)
   const allCatNames = [...new Set([...DEFAULT_CATS, ...categories.map(c=>c.name), ...spendings.map(s=>s.type)])];
   const catData = allCatNames.map((cat, i) => ({
     label: cat,
@@ -169,6 +231,40 @@ export default function Balance({ firestoreData }) {
     color: CAT_COLORS[i % CAT_COLORS.length],
   })).filter(d => d.value > 0);
 
+  // ── Monthly Report data (current month) ──
+  const now = new Date();
+  const cm = mkey(now.toISOString());
+  const monthLabel = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const cmInv = investments.filter(e => mkey(e.date) === cm);
+  const cmSpe = spendings.filter(e => mkey(e.date) === cm);
+  const cmInvTotal = cmInv.reduce((s,e)=>s+e.amount,0);
+  const cmSpeTotal = cmSpe.reduce((s,e)=>s+e.amount,0);
+  const cmNet = cmInvTotal - cmSpeTotal;
+  // top spending category this month
+  const cmCatAgg = {};
+  cmSpe.forEach(e => { const c=e.type||"Other"; cmCatAgg[c]=(cmCatAgg[c]||0)+Number(e.amount); });
+  const cmTopCat = Object.entries(cmCatAgg).sort((a,b)=>b[1]-a[1])[0];
+
+  // ── Health Score ──
+  const streak = computeStreak(investments, spendings);
+  const health = computeHealthScore({ totalInvested, totalSpent, investments, spendings, streak, autopayMonthly: 0 });
+  const scoreColor = health.total >= 71 ? "#34D399" : health.total >= 41 ? "#FBBF24" : "#F87171";
+  const scoreLabel = health.total >= 71 ? "Good" : health.total >= 41 ? "Fair" : "Needs Work";
+
+  async function handleExport() {
+    setExporting(true); setExportMsg("");
+    try {
+      const outcome = await exportReportImage(investments, spendings, totalInvested, totalSpent, netBalance);
+      setExportMsg(outcome === "shared" ? "Opened share sheet 🎉" : "Image downloaded 🎉");
+      setTimeout(()=>setExportMsg(""), 3000);
+    } catch (e) {
+      console.error("Export error:", e);
+      setExportMsg("Couldn't export. Try again?");
+      setTimeout(()=>setExportMsg(""), 3000);
+    }
+    setExporting(false);
+  }
+
   if (loading) return (
     <div style={{paddingTop:"24px",display:"flex",flexDirection:"column",gap:"12px"}}>
       {[1,2,3].map(i=><div key={i} style={{...card,height:"80px",opacity:0.5}}/>)}
@@ -182,17 +278,20 @@ export default function Balance({ firestoreData }) {
           <h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>Balance</h1>
           <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>Your complete financial picture</p>
         </div>
-        <button onClick={() => exportPDF(investments, spendings, totalInvested, totalSpent, netBalance)}
+        <button onClick={handleExport} disabled={exporting}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
-          style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)",color:"#FBBF24",cursor:"pointer",fontFamily:"inherit"}}>
-          📄 Export PDF
+          style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)",color:"#FBBF24",cursor:exporting?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          {exporting ? "..." : "📄 Export"}
         </button>
       </div>
+      {exportMsg && <p className="text-xs text-center mb-3" style={{color:"#FBBF24"}}>{exportMsg}</p>}
 
-      <div className="flex gap-2 mb-4">
-        {[["overview","📊 Overview"],["charts","📈 Charts"]].map(([id,label])=>(
+      {/* Tabs — horizontally scrollable so 4 fit cleanly on mobile */}
+      <div className="flex gap-2 mb-4" style={{overflowX:"auto",paddingBottom:"4px"}}>
+        {[["overview","📊 Overview"],["charts","📈 Charts"],["report","📄 Report"],["score","💯 Score"]].map(([id,label])=>(
           <button key={id} onClick={()=>setTab(id)} className="px-4 py-2 rounded-xl text-sm font-semibold"
             style={{
+              flexShrink:0,
               background: tab===id ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)",
               border: tab===id ? "1px solid rgba(52,211,153,0.3)" : "1px solid rgba(255,255,255,0.08)",
               color: tab===id ? "#34D399" : "#6B7280",
@@ -236,7 +335,6 @@ export default function Balance({ firestoreData }) {
           </div>
         </div>
 
-        {/* ✨ FIXED: Best/Worst with clear signs and labels */}
         {best&&worst&&best.mk!==worst.mk&&(
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div style={{...card,padding:"16px",border:"1px solid rgba(52,211,153,0.12)"}}>
@@ -339,6 +437,102 @@ export default function Balance({ firestoreData }) {
               </div>
             </div>
           )}
+        </div>
+      </>)}
+
+      {/* ✨ NEW: Monthly Report tab */}
+      {tab === "report" && (<>
+        <div className="p-5 mb-4 relative overflow-hidden" style={{...card}}>
+          <div style={{position:"absolute",top:"-40px",right:"-40px",width:"160px",height:"160px",borderRadius:"50%",background:"radial-gradient(circle,rgba(52,211,153,0.12),transparent 70%)",pointerEvents:"none"}}/>
+          <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>Report for</p>
+          <p className="text-lg font-bold mb-4" style={{color:"#E5E7EB"}}>{monthLabel}</p>
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div style={{padding:"14px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:"12px"}}>
+              <p className="text-xs" style={{color:"#6B7280"}}>Invested</p>
+              <p className="text-xl font-bold font-mono" style={{color:"#34D399"}}>{fmt(cmInvTotal)}</p>
+              <p className="text-xs mt-1" style={{color:"#475569"}}>{cmInv.length} {cmInv.length===1?"entry":"entries"}</p>
+            </div>
+            <div style={{padding:"14px",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.15)",borderRadius:"12px"}}>
+              <p className="text-xs" style={{color:"#6B7280"}}>Spent</p>
+              <p className="text-xl font-bold font-mono" style={{color:"#F87171"}}>{fmt(cmSpeTotal)}</p>
+              <p className="text-xs mt-1" style={{color:"#475569"}}>{cmSpe.length} {cmSpe.length===1?"entry":"entries"}</p>
+            </div>
+          </div>
+
+          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:"12px",marginBottom:"4px"}}>
+            <div className="flex justify-between items-center">
+              <span className="text-sm" style={{color:"#9CA3AF"}}>Net this month</span>
+              <span className="text-lg font-bold font-mono" style={{color:cmNet>=0?"#FBBF24":"#F87171"}}>{cmNet>=0?"+":""}{fmt(cmNet)}</span>
+            </div>
+            {cmTopCat && (
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-sm" style={{color:"#9CA3AF"}}>Top spending</span>
+                <span className="text-sm font-semibold" style={{color:"#E5E7EB"}}>{cmTopCat[0]} · {fmt(cmTopCat[1])}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {cmInv.length === 0 && cmSpe.length === 0 && (
+          <div style={{...card,textAlign:"center",padding:"32px 20px",color:"#4B5563"}}>
+            <p style={{fontSize:"32px",marginBottom:"8px"}}>📄</p>
+            <p style={{fontSize:"13px"}}>No activity this month yet</p>
+          </div>
+        )}
+
+        <button onClick={handleExport} disabled={exporting} style={{
+          width:"100%",padding:"13px",marginBottom:"8px",
+          background: exporting ? "rgba(52,211,153,0.4)" : "linear-gradient(135deg,#34D399,#059669)",
+          border:"none",borderRadius:"12px",color:"#022C22",fontWeight:700,fontSize:"14px",
+          cursor:exporting?"not-allowed":"pointer",fontFamily:"inherit",
+        }}>
+          {exporting ? "Preparing..." : "📤 Share this report"}
+        </button>
+      </>)}
+
+      {/* ✨ NEW: Health Score tab */}
+      {tab === "score" && (<>
+        <div className="p-6 mb-4 relative overflow-hidden" style={{...card,textAlign:"center"}}>
+          <div style={{position:"absolute",top:"-50px",left:"50%",transform:"translateX(-50%)",width:"220px",height:"220px",borderRadius:"50%",background:`radial-gradient(circle, ${scoreColor}22, transparent 70%)`,pointerEvents:"none"}}/>
+          <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{color:"#6B7280"}}>Money Score</p>
+
+          {/* Circular gauge */}
+          <div style={{position:"relative",width:"180px",height:"180px",margin:"0 auto 12px"}}>
+            <svg width="180" height="180" viewBox="0 0 180 180">
+              <circle cx="90" cy="90" r="78" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="14"/>
+              <circle cx="90" cy="90" r="78" fill="none" stroke={scoreColor} strokeWidth="14" strokeLinecap="round"
+                strokeDasharray={`${(health.total/100)*490} 490`} transform="rotate(-90 90 90)"
+                style={{transition:"stroke-dasharray .8s ease"}}/>
+            </svg>
+            <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+              <span style={{color:scoreColor,fontSize:"46px",fontWeight:800,lineHeight:1}}>{health.total}</span>
+              <span style={{color:"#6B7280",fontSize:"12px"}}>/ 100</span>
+            </div>
+          </div>
+          <p style={{color:scoreColor,fontWeight:700,fontSize:"15px"}}>{scoreLabel}</p>
+        </div>
+
+        <div style={{...card,padding:"16px"}}>
+          <p className="text-xs uppercase tracking-wider font-mono mb-3" style={{color:"#6B7280"}}>Breakdown</p>
+          {health.components.map(c => {
+            const pctc = Math.round((c.pts / c.max) * 100);
+            return (
+              <div key={c.label} style={{marginBottom:"14px"}}>
+                <div className="flex justify-between text-xs mb-1">
+                  <span style={{color:"#E5E7EB",fontWeight:600}}>{c.label}</span>
+                  <span style={{color:"#9CA3AF",fontFamily:"monospace"}}>{c.pts}/{c.max}</span>
+                </div>
+                <div style={{height:"5px",background:"rgba(255,255,255,0.05)",borderRadius:"99px",overflow:"hidden",marginBottom:"4px"}}>
+                  <div style={{height:"100%",width:`${pctc}%`,background:scoreColor,borderRadius:"99px",transition:"width .6s ease"}}/>
+                </div>
+                <p style={{color:"#4B5563",fontSize:"10px"}}>{c.tip}</p>
+              </div>
+            );
+          })}
+          <p style={{color:"#4B5563",fontSize:"10px",marginTop:"4px",lineHeight:1.5}}>
+            More factors (budgets, emergency fund) will be added to your score as those features arrive.
+          </p>
         </div>
       </>)}
     </div>
