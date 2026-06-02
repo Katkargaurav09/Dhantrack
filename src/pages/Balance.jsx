@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
 import { saveOrShareImage } from "../utils/shareImage";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DEFAULT_CATS=["Food","Travel","Shopping","Entertainment","Course","Electronics","Health","Utilities","Rent","Fuel","Other"];
@@ -77,7 +82,6 @@ function BarChart({ months, investments, spendings }) {
   );
 }
 
-// ── Streak (same logic as Home) — used by Health Score "Consistency" ──
 function computeStreak(investments, spendings) {
   const allDates = new Set([...investments.map(e=>e.date),...spendings.map(e=>e.date)]);
   let streak = 0;
@@ -91,50 +95,42 @@ function computeStreak(investments, spendings) {
   return streak;
 }
 
-// ── Health Score: only components we can calculate today ──
-// Savings 35 · Investing 30 · Consistency 20 · Subscriptions 15  (= 100)
-function computeHealthScore({ totalInvested, totalSpent, investments, spendings, streak, autopayMonthly }) {
-  // 1. Savings rate — savings ÷ (savings+spend). >=20% savings = full points.
-  const savings = totalInvested - totalSpent;
-  const denom = totalInvested + totalSpent;
+// Health Score (components we can calculate today). Income improves savings accuracy.
+function computeHealthScore({ totalIncome, totalSpent, investments, streak }) {
+  // 1. Savings rate — (income - spend) / income. >=20% = full. Falls back to invest-vs-spend if no income.
   let savingsPts = 0;
-  if (denom > 0) {
-    const rate = savings / denom; // can be negative if overspending
+  if (totalIncome > 0) {
+    const rate = (totalIncome - totalSpent) / totalIncome;
     savingsPts = Math.max(0, Math.min(1, rate / 0.2)) * 35;
+  } else {
+    const denom = investments.reduce((s,e)=>s+(Number(e.amount)||0),0) + totalSpent;
+    if (denom > 0) {
+      const invTotal = investments.reduce((s,e)=>s+(Number(e.amount)||0),0);
+      savingsPts = Math.max(0, Math.min(1, (invTotal/denom) / 0.5)) * 35;
+    }
   }
-
-  // 2. Investing habit — having regular investments. 10+ entries = full.
   const investPts = Math.max(0, Math.min(1, investments.length / 10)) * 30;
-
-  // 3. Consistency — tracking streak. 14-day streak = full.
   const consistencyPts = Math.max(0, Math.min(1, streak / 14)) * 20;
-
-  // 4. Subscription health — penalty if autopay > ₹2,000/month.
-  let subsPts = 15;
-  if (autopayMonthly > 2000) {
-    const over = Math.min(1, (autopayMonthly - 2000) / 3000); // fully penalised at +₹3k over
-    subsPts = 15 * (1 - over);
-  }
+  const subsPts = 15; // placeholder until autopay is wired into Balance
 
   const components = [
-    { label: "Savings Rate",   pts: Math.round(savingsPts),     max: 35, tip: "Save 20%+ of your money for full points." },
-    { label: "Investing",      pts: Math.round(investPts),      max: 30, tip: "Invest regularly — 10+ entries unlocks full points." },
-    { label: "Consistency",    pts: Math.round(consistencyPts), max: 20, tip: "Track daily — a 14-day streak gives full points." },
-    { label: "Subscriptions",  pts: Math.round(subsPts),        max: 15, tip: "Keep autopay under ₹2,000/month." },
+    { label: "Savings Rate",  pts: Math.round(savingsPts),     max: 35, tip: "Save 20%+ of your income for full points." },
+    { label: "Investing",     pts: Math.round(investPts),      max: 30, tip: "Invest regularly — 10+ entries unlocks full points." },
+    { label: "Consistency",   pts: Math.round(consistencyPts), max: 20, tip: "Track daily — a 14-day streak gives full points." },
+    { label: "Subscriptions", pts: Math.round(subsPts),        max: 15, tip: "Keep autopay under ₹2,000/month." },
   ];
   const total = components.reduce((s, c) => s + c.pts, 0);
   return { total: Math.max(0, Math.min(100, total)), components };
 }
 
-// ✨ FIXED export: draw the report on a canvas and share via the shared helper
-async function exportReportImage(investments, spendings, totalInvested, totalSpent, netBalance) {
+// Monthly report IMAGE (Report tab "Share this report") — unchanged behaviour
+async function exportReportImage(investments, spendings, incomes, totalInvested, totalSpent, netBalance) {
   const now   = new Date();
   const month = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
   const cm    = mkey(now.toISOString());
   const mInv  = investments.filter(e => mkey(e.date) === cm).reduce((s,e)=>s+e.amount,0);
   const mSpe  = spendings.filter(e => mkey(e.date) === cm).reduce((s,e)=>s+e.amount,0);
-  const mInvN = investments.filter(e => mkey(e.date) === cm).length;
-  const mSpeN = spendings.filter(e => mkey(e.date) === cm).length;
+  const mIncm = incomes.filter(e => mkey(e.date) === cm).reduce((s,e)=>s+e.amount,0);
 
   const canvas = document.createElement("canvas");
   canvas.width = 1080; canvas.height = 1350;
@@ -154,34 +150,32 @@ async function exportReportImage(investments, spendings, totalInvested, totalSpe
   ctx.fillStyle = "#9CA3AF"; ctx.font = "34px system-ui";
   ctx.fillText(`Report for ${month}`, 540, 210);
 
-  // Net savings hero
   const pos = netBalance >= 0;
   ctx.fillStyle = "#6B7280"; ctx.font = "30px system-ui";
-  ctx.fillText("NET SAVINGS", 540, 360);
-  ctx.fillStyle = pos ? "#FBBF24" : "#F87171"; ctx.font = "bold 110px system-ui";
-  ctx.fillText(`${pos?"+":"-"}₹${Math.abs(netBalance).toLocaleString("en-IN")}`, 540, 480);
+  ctx.fillText("NET SAVINGS", 540, 340);
+  ctx.fillStyle = pos ? "#FBBF24" : "#F87171"; ctx.font = "bold 100px system-ui";
+  ctx.fillText(`${pos?"+":"-"}₹${Math.abs(netBalance).toLocaleString("en-IN")}`, 540, 450);
 
-  // Two boxes: invested / spent
   function box(x, label, value, color) {
     ctx.fillStyle = "rgba(255,255,255,0.04)";
-    ctx.fillRect(x, 580, 420, 200);
-    ctx.fillStyle = "#6B7280"; ctx.font = "28px system-ui"; ctx.textAlign = "center";
-    ctx.fillText(label, x + 210, 650);
-    ctx.fillStyle = color; ctx.font = "bold 58px system-ui";
-    ctx.fillText(`₹${value.toLocaleString("en-IN")}`, x + 210, 730);
+    ctx.fillRect(x, 540, 280, 180);
+    ctx.fillStyle = "#6B7280"; ctx.font = "26px system-ui"; ctx.textAlign = "center";
+    ctx.fillText(label, x + 140, 600);
+    ctx.fillStyle = color; ctx.font = "bold 44px system-ui";
+    ctx.fillText(`₹${value.toLocaleString("en-IN")}`, x + 140, 665);
   }
-  box(90, "TOTAL INVESTED", totalInvested, "#34D399");
-  box(570, "TOTAL SPENT", totalSpent, "#F87171");
+  box(70,  "INCOME (mo)", mIncm, "#FBBF24");
+  box(400, "INVESTED (mo)", mInv, "#34D399");
+  box(730, "SPENT (mo)", mSpe, "#F87171");
 
-  // This month lines
   ctx.textAlign = "left";
   ctx.fillStyle = "#E5E7EB"; ctx.font = "bold 40px system-ui";
-  ctx.fillText("This Month", 90, 920);
-  ctx.fillStyle = "#9CA3AF"; ctx.font = "34px system-ui";
-  ctx.fillText(`📈 Invested:  ₹${mInv.toLocaleString("en-IN")}  (${mInvN} ${mInvN===1?"entry":"entries"})`, 90, 990);
-  ctx.fillText(`💸 Spent:      ₹${mSpe.toLocaleString("en-IN")}  (${mSpeN} ${mSpeN===1?"entry":"entries"})`, 90, 1050);
+  ctx.fillText("All-Time Totals", 90, 870);
+  ctx.fillStyle = "#9CA3AF"; ctx.font = "32px system-ui";
+  ctx.fillText(`💰 Income:    ₹${incomes.reduce((s,e)=>s+e.amount,0).toLocaleString("en-IN")}`, 90, 935);
+  ctx.fillText(`📈 Invested:  ₹${totalInvested.toLocaleString("en-IN")}`, 90, 990);
+  ctx.fillText(`💸 Spent:      ₹${totalSpent.toLocaleString("en-IN")}`, 90, 1045);
 
-  // Footer
   ctx.textAlign = "center";
   ctx.fillStyle = "#34D399"; ctx.font = "bold 36px system-ui";
   ctx.fillText("Track your money smarter", 540, 1230);
@@ -191,8 +185,86 @@ async function exportReportImage(investments, spendings, totalInvested, totalSpe
   const blob = await new Promise(res => canvas.toBlob(res, "image/png", 0.95));
   return saveOrShareImage(blob, `dhantrack-report-${cm}.png`, {
     title: `DhanTrack Report — ${month}`,
-    text: `My DhanTrack summary for ${month}: Net ${pos?"+":"-"}₹${Math.abs(netBalance).toLocaleString("en-IN")}`,
+    text: `My DhanTrack summary for ${month}`,
   });
+}
+
+// ✨ FULL-DATA PDF (top Export button) — all incomes + spendings + investments, every row
+async function exportFullPDF(investments, spendings, incomes, totalInvested, totalSpent, totalIncome) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const now = new Date();
+  const generated = now.toLocaleDateString("en-IN", { day:"numeric", month:"long", year:"numeric" });
+  const inr = n => "Rs " + Number(n).toLocaleString("en-IN");
+
+  // Header
+  doc.setFontSize(20); doc.setTextColor(5,150,105);
+  doc.text("DhanTrack — Full Report", 40, 50);
+  doc.setFontSize(10); doc.setTextColor(120,120,120);
+  doc.text(`Generated ${generated}`, 40, 68);
+
+  // Summary line
+  const net = totalIncome - totalSpent;
+  doc.setFontSize(11); doc.setTextColor(40,40,40);
+  doc.text(
+    `Income: ${inr(totalIncome)}   |   Invested: ${inr(totalInvested)}   |   Spent: ${inr(totalSpent)}   |   Net (Income - Spent): ${inr(net)}`,
+    40, 92
+  );
+
+  let y = 110;
+  const sortByDate = arr => [...arr].sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  function section(title, rows, totalLabel, totalVal, headColor) {
+    doc.setFontSize(13); doc.setTextColor(30,30,30);
+    autoTable(doc, {
+      startY: y + 14,
+      head: [[title, "", "", "", ""]],
+      body: [],
+      theme: "plain",
+      styles: { fontStyle: "bold", fontSize: 12 },
+    });
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 2,
+      head: [["Date", "Name", "Category", "Amount", "Note"]],
+      body: rows.length
+        ? sortByDate(rows).map(e => [e.date, e.name || "-", e.type || "-", inr(e.amount), e.note || "-"])
+        : [["—", "No entries", "—", "—", "—"]],
+      foot: rows.length ? [["", "", totalLabel, inr(totalVal), ""]] : undefined,
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: headColor, textColor: 255 },
+      footStyles: { fillColor: [243,244,246], textColor: 30, fontStyle: "bold" },
+      columnStyles: { 3: { halign: "right" } },
+      margin: { left: 40, right: 40 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  section("Income", incomes, "Total Income", totalIncome, [217,119,6]);
+  section("Investments", investments, "Total Invested", totalInvested, [5,150,105]);
+  section("Spending", spendings, "Total Spent", totalSpent, [239,68,68]);
+
+  // Footer
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(150,150,150);
+    doc.text(`DhanTrack · dhantrack-one.vercel.app · Page ${i}/${pageCount}`, 40, doc.internal.pageSize.getHeight() - 20);
+  }
+
+  const fileName = `dhantrack-full-report-${now.toISOString().split("T")[0]}.pdf`;
+  const isNative = Capacitor.isNativePlatform && Capacitor.isNativePlatform();
+
+  if (isNative) {
+    // Write PDF to device + open native share sheet
+    const base64 = doc.output("datauristring").split(",")[1];
+    await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Cache });
+    const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+    await Share.share({ title: "DhanTrack Full Report", url: uri.uri, dialogTitle: "Save or share your PDF" });
+    return "shared";
+  } else {
+    // Desktop: normal download
+    doc.save(fileName);
+    return "downloaded";
+  }
 }
 
 export default function Balance({ firestoreData }) {
@@ -200,9 +272,10 @@ export default function Balance({ firestoreData }) {
   const [tab,setTab]=useState("overview");
   const [exporting,setExporting]=useState(false);
   const [exportMsg,setExportMsg]=useState("");
+  const [reportSharing,setReportSharing]=useState(false);
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
 
-  const { investments=[], spendings=[], categories=[], totalInvested=0, totalSpent=0, netBalance=0, loading=false } = firestoreData || {};
+  const { investments=[], spendings=[], incomes=[], categories=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, loading=false } = firestoreData || {};
 
   const isPos = netBalance >= 0;
   const pct   = totalInvested + totalSpent > 0 ? Math.round(totalInvested / (totalInvested + totalSpent) * 100) : 50;
@@ -231,31 +304,32 @@ export default function Balance({ firestoreData }) {
     color: CAT_COLORS[i % CAT_COLORS.length],
   })).filter(d => d.value > 0);
 
-  // ── Monthly Report data (current month) ──
+  // Monthly Report data (current month)
   const now = new Date();
   const cm = mkey(now.toISOString());
   const monthLabel = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
   const cmInv = investments.filter(e => mkey(e.date) === cm);
   const cmSpe = spendings.filter(e => mkey(e.date) === cm);
+  const cmIncm = incomes.filter(e => mkey(e.date) === cm);
   const cmInvTotal = cmInv.reduce((s,e)=>s+e.amount,0);
   const cmSpeTotal = cmSpe.reduce((s,e)=>s+e.amount,0);
+  const cmIncTotal = cmIncm.reduce((s,e)=>s+e.amount,0);
   const cmNet = cmInvTotal - cmSpeTotal;
-  // top spending category this month
   const cmCatAgg = {};
   cmSpe.forEach(e => { const c=e.type||"Other"; cmCatAgg[c]=(cmCatAgg[c]||0)+Number(e.amount); });
   const cmTopCat = Object.entries(cmCatAgg).sort((a,b)=>b[1]-a[1])[0];
 
-  // ── Health Score ──
+  // Health Score
   const streak = computeStreak(investments, spendings);
-  const health = computeHealthScore({ totalInvested, totalSpent, investments, spendings, streak, autopayMonthly: 0 });
+  const health = computeHealthScore({ totalIncome, totalSpent, investments, streak });
   const scoreColor = health.total >= 71 ? "#34D399" : health.total >= 41 ? "#FBBF24" : "#F87171";
   const scoreLabel = health.total >= 71 ? "Good" : health.total >= 41 ? "Fair" : "Needs Work";
 
   async function handleExport() {
     setExporting(true); setExportMsg("");
     try {
-      const outcome = await exportReportImage(investments, spendings, totalInvested, totalSpent, netBalance);
-      setExportMsg(outcome === "shared" ? "Opened share sheet 🎉" : "Image downloaded 🎉");
+      const outcome = await exportFullPDF(investments, spendings, incomes, totalInvested, totalSpent, totalIncome);
+      setExportMsg(outcome === "shared" ? "PDF ready — share sheet opened 🎉" : "PDF downloaded 🎉");
       setTimeout(()=>setExportMsg(""), 3000);
     } catch (e) {
       console.error("Export error:", e);
@@ -263,6 +337,14 @@ export default function Balance({ firestoreData }) {
       setTimeout(()=>setExportMsg(""), 3000);
     }
     setExporting(false);
+  }
+
+  async function handleShareReport() {
+    setReportSharing(true);
+    try {
+      await exportReportImage(investments, spendings, incomes, totalInvested, totalSpent, netBalance);
+    } catch (e) { console.error("Report share error:", e); }
+    setReportSharing(false);
   }
 
   if (loading) return (
@@ -281,7 +363,7 @@ export default function Balance({ firestoreData }) {
         <button onClick={handleExport} disabled={exporting}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
           style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)",color:"#FBBF24",cursor:exporting?"not-allowed":"pointer",fontFamily:"inherit"}}>
-          {exporting ? "..." : "📄 Export"}
+          {exporting ? "..." : "📄 Export PDF"}
         </button>
       </div>
       {exportMsg && <p className="text-xs text-center mb-3" style={{color:"#FBBF24"}}>{exportMsg}</p>}
@@ -318,6 +400,17 @@ export default function Balance({ firestoreData }) {
             <p className="text-xs uppercase tracking-wider font-mono mb-2" style={{color:"#6B7280"}}>Total Spent</p>
             <p className="text-2xl font-bold" style={{color:"#F87171"}}>{fmt(totalSpent)}</p>
             <p className="text-xs mt-1" style={{color:"#475569"}}>{spendings.length} entries</p>
+          </div>
+        </div>
+
+        {/* Income summary row */}
+        <div style={{...card,padding:"16px",marginBottom:"16px",border:"1px solid rgba(251,191,36,0.15)"}}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider font-mono mb-1" style={{color:"#6B7280"}}>Total Income</p>
+              <p className="text-2xl font-bold" style={{color:"#FBBF24"}}>{fmt(totalIncome)}</p>
+            </div>
+            <p className="text-xs" style={{color:"#475569"}}>{incomes.length} {incomes.length===1?"entry":"entries"}</p>
           </div>
         </div>
 
@@ -440,27 +533,29 @@ export default function Balance({ firestoreData }) {
         </div>
       </>)}
 
-      {/* ✨ NEW: Monthly Report tab */}
+      {/* Monthly Report tab (image share) */}
       {tab === "report" && (<>
         <div className="p-5 mb-4 relative overflow-hidden" style={{...card}}>
           <div style={{position:"absolute",top:"-40px",right:"-40px",width:"160px",height:"160px",borderRadius:"50%",background:"radial-gradient(circle,rgba(52,211,153,0.12),transparent 70%)",pointerEvents:"none"}}/>
           <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>Report for</p>
           <p className="text-lg font-bold mb-4" style={{color:"#E5E7EB"}}>{monthLabel}</p>
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div style={{padding:"14px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:"12px"}}>
-              <p className="text-xs" style={{color:"#6B7280"}}>Invested</p>
-              <p className="text-xl font-bold font-mono" style={{color:"#34D399"}}>{fmt(cmInvTotal)}</p>
-              <p className="text-xs mt-1" style={{color:"#475569"}}>{cmInv.length} {cmInv.length===1?"entry":"entries"}</p>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div style={{padding:"12px",background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.15)",borderRadius:"12px"}}>
+              <p className="text-xs" style={{color:"#6B7280"}}>Income</p>
+              <p className="text-base font-bold font-mono" style={{color:"#FBBF24"}}>{fmt(cmIncTotal)}</p>
             </div>
-            <div style={{padding:"14px",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.15)",borderRadius:"12px"}}>
+            <div style={{padding:"12px",background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:"12px"}}>
+              <p className="text-xs" style={{color:"#6B7280"}}>Invested</p>
+              <p className="text-base font-bold font-mono" style={{color:"#34D399"}}>{fmt(cmInvTotal)}</p>
+            </div>
+            <div style={{padding:"12px",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.15)",borderRadius:"12px"}}>
               <p className="text-xs" style={{color:"#6B7280"}}>Spent</p>
-              <p className="text-xl font-bold font-mono" style={{color:"#F87171"}}>{fmt(cmSpeTotal)}</p>
-              <p className="text-xs mt-1" style={{color:"#475569"}}>{cmSpe.length} {cmSpe.length===1?"entry":"entries"}</p>
+              <p className="text-base font-bold font-mono" style={{color:"#F87171"}}>{fmt(cmSpeTotal)}</p>
             </div>
           </div>
 
-          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:"12px",marginBottom:"4px"}}>
+          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:"12px"}}>
             <div className="flex justify-between items-center">
               <span className="text-sm" style={{color:"#9CA3AF"}}>Net this month</span>
               <span className="text-lg font-bold font-mono" style={{color:cmNet>=0?"#FBBF24":"#F87171"}}>{cmNet>=0?"+":""}{fmt(cmNet)}</span>
@@ -474,30 +569,29 @@ export default function Balance({ firestoreData }) {
           </div>
         </div>
 
-        {cmInv.length === 0 && cmSpe.length === 0 && (
+        {cmInv.length === 0 && cmSpe.length === 0 && cmIncm.length === 0 && (
           <div style={{...card,textAlign:"center",padding:"32px 20px",color:"#4B5563"}}>
             <p style={{fontSize:"32px",marginBottom:"8px"}}>📄</p>
             <p style={{fontSize:"13px"}}>No activity this month yet</p>
           </div>
         )}
 
-        <button onClick={handleExport} disabled={exporting} style={{
+        <button onClick={handleShareReport} disabled={reportSharing} style={{
           width:"100%",padding:"13px",marginBottom:"8px",
-          background: exporting ? "rgba(52,211,153,0.4)" : "linear-gradient(135deg,#34D399,#059669)",
+          background: reportSharing ? "rgba(52,211,153,0.4)" : "linear-gradient(135deg,#34D399,#059669)",
           border:"none",borderRadius:"12px",color:"#022C22",fontWeight:700,fontSize:"14px",
-          cursor:exporting?"not-allowed":"pointer",fontFamily:"inherit",
+          cursor:reportSharing?"not-allowed":"pointer",fontFamily:"inherit",
         }}>
-          {exporting ? "Preparing..." : "📤 Share this report"}
+          {reportSharing ? "Preparing..." : "📤 Share this report (image)"}
         </button>
       </>)}
 
-      {/* ✨ NEW: Health Score tab */}
+      {/* Health Score tab */}
       {tab === "score" && (<>
         <div className="p-6 mb-4 relative overflow-hidden" style={{...card,textAlign:"center"}}>
           <div style={{position:"absolute",top:"-50px",left:"50%",transform:"translateX(-50%)",width:"220px",height:"220px",borderRadius:"50%",background:`radial-gradient(circle, ${scoreColor}22, transparent 70%)`,pointerEvents:"none"}}/>
           <p className="text-xs font-mono uppercase tracking-widest mb-3" style={{color:"#6B7280"}}>Money Score</p>
 
-          {/* Circular gauge */}
           <div style={{position:"relative",width:"180px",height:"180px",margin:"0 auto 12px"}}>
             <svg width="180" height="180" viewBox="0 0 180 180">
               <circle cx="90" cy="90" r="78" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="14"/>

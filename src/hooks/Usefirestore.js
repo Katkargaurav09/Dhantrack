@@ -9,6 +9,7 @@ import { db } from "../firebase/config";
 export default function useFirestore(uid) {
   const [investments,      setInvestments]      = useState([]);
   const [spendings,        setSpendings]        = useState([]);
+  const [incomes,          setIncomes]          = useState([]);     // ✨ NEW v1.6 income
   const [categories,       setCategories]       = useState([]);     // Legacy v1.4 (shared)
   const [customCategories, setCustomCategories] = useState([]);     // ✨ NEW v1.5 (with kind)
   const [learnedCategories,setLearnedCategories]= useState({});     // ✨ NEW v1.5 (auto-categorize)
@@ -36,6 +37,17 @@ export default function useFirestore(uid) {
     const unsub = onSnapshot(q,
       snap => setSpendings(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err  => console.error("Spendings error:", err.message)
+    );
+    return () => unsub();
+  }, [uid]);
+
+  // ✨ NEW v1.6: Incomes listener ───
+  useEffect(() => {
+    if (!uid) return;
+    const q = query(collection(db, "users", uid, "incomes"), orderBy("date", "desc"));
+    const unsub = onSnapshot(q,
+      snap => setIncomes(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error("Incomes error:", err.message)
     );
     return () => unsub();
   }, [uid]);
@@ -139,11 +151,13 @@ export default function useFirestore(uid) {
   // ─── Computed totals ───
   const totalInvested = investments.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const totalSpent    = spendings.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const totalIncome   = incomes.reduce((s, e) => s + (Number(e.amount) || 0), 0);   // ✨ NEW v1.6
   const netBalance    = totalInvested - totalSpent;
 
   return {
     investments,
     spendings,
+    incomes,                   // ✨ NEW v1.6
     categories,                // legacy v1.4
     customCategories,          // ✨ NEW v1.5
     learnedCategories,         // ✨ NEW v1.5
@@ -154,6 +168,7 @@ export default function useFirestore(uid) {
     learnCategory,             // ✨ NEW v1.5
     totalInvested,
     totalSpent,
+    totalIncome,               // ✨ NEW v1.6
     netBalance,
   };
 }

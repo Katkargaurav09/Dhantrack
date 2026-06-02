@@ -10,6 +10,7 @@ import useAuth       from "./hooks/Useauth";
 import useFirestore  from "./hooks/Usefirestore";
 import QuickAddMenu  from "./components/QuickAddMenu";
 import SearchOverlay from "./components/SearchOverlay";
+import IncomeAddPanel from "./components/IncomeAddPanel";
 
 const NAV = [
   { id: "home",        label: "Home",   fullLabel: "Overview",    icon: "🏠" },
@@ -56,7 +57,6 @@ function UserAvatar({ user, onLogout }) {
   );
 }
 
-// ✨ NEW: Search Icon Button
 function SearchButton({ onClick }) {
   return (
     <button onClick={onClick} title="Search"
@@ -165,8 +165,8 @@ function LoadingScreen() {
 export default function App() {
   const [page, setPage] = useState("home");
   const [quickAddTrigger, setQuickAddTrigger] = useState(null);
-  // ✨ NEW: Search overlay state
   const [searchOpen, setSearchOpen] = useState(false);
+  const [incomeOpen, setIncomeOpen] = useState(false); // ✨ NEW v1.6: income add-form overlay
 
   const { user, loading, login, register, loginWithGoogle, logout } = useAuth();
   const firestoreData = useFirestore(user?.uid || null);
@@ -184,30 +184,40 @@ export default function App() {
 
   function changePage(newPage) {
     setQuickAddTrigger(null);
-    setSearchOpen(false); // Close search if open
+    setSearchOpen(false);
     setPage(newPage);
   }
 
   function handleQuickAdd(type) {
-  const pageMap = { investment: "investments", spending: "spending", autopay: "autopay" };
-  const targetPage = pageMap[type];
-  const ctx = window.__dhanPresetContext;
+    // ✨ NEW v1.6: income has no page — open the income add-form overlay instead
+    if (type === "income") {
+      setIncomeOpen(true);
+      return;
+    }
 
-  setQuickAddTrigger(null);
-  setPage(targetPage);
+    const pageMap = { investment: "investments", spending: "spending", autopay: "autopay" };
+    const targetPage = pageMap[type];
+    const ctx = window.__dhanPresetContext;
 
-  if (ctx && ctx.page === targetPage) {
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("dhan-preset-add", { detail: ctx }));
-    }, 100);
-  } else {
-    setTimeout(() => {
-      setQuickAddTrigger({ type, ts: Date.now() });
-    }, 100);
+    setQuickAddTrigger(null);
+    setPage(targetPage);
+
+    if (ctx && ctx.page === targetPage) {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("dhan-preset-add", { detail: ctx }));
+      }, 100);
+    } else {
+      setTimeout(() => {
+        setQuickAddTrigger({ type, ts: Date.now() });
+      }, 100);
+    }
   }
-}
 
-  // ✨ NEW: When user taps a search result, navigate to that page
+  // ✨ NEW v1.6: save an income entry
+  async function handleSaveIncome(entry) {
+    await firestoreData.addEntry("incomes", entry);
+  }
+
   function handleSearchNavigate(targetPage) {
     setSearchOpen(false);
     setPage(targetPage);
@@ -234,8 +244,10 @@ export default function App() {
       </main>
       <BottomNav current={page} onChange={changePage}/>
       <QuickAddMenu onAdd={handleQuickAdd}/>
-      
-      {/* ✨ NEW: Search Overlay */}
+
+      {/* ✨ NEW v1.6: Income add-form overlay (no separate page) */}
+      <IncomeAddPanel open={incomeOpen} onClose={()=>setIncomeOpen(false)} onSave={handleSaveIncome}/>
+
       {searchOpen && (
         <SearchOverlay 
           firestoreData={firestoreData} 

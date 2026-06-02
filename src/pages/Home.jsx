@@ -67,7 +67,7 @@ export default function Home({ navigate, firestoreData, user }) {
     return () => unsub();
   }, [uid]);
 
-  const { investments=[], spendings=[], categories=[], customCategories=[], totalInvested=0, totalSpent=0, netBalance=0, loading=false } = firestoreData || {};
+  const { investments=[], spendings=[], incomes=[], categories=[], customCategories=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, loading=false } = firestoreData || {};
 
   // Build full icon map from defaults + custom categories (legacy + new)
   const iconMap = { ...TYPE_ICON };
@@ -80,6 +80,7 @@ export default function Home({ navigate, firestoreData, user }) {
   const cs      = spendings.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
   const ps      = spendings.filter(e=>mkey(e.date)===pm).reduce((s,e)=>s+e.amount,0);
   const ci      = investments.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
+  const cInc    = incomes.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0); // ✨ NEW v1.6: this month's income
   const diff    = cs - ps;
   const pct     = ps > 0 ? Math.abs(Math.round((diff/ps)*100)) : 0;
   const dayName = now.toLocaleDateString("en-IN",{weekday:"long"}).toUpperCase();
@@ -91,7 +92,7 @@ export default function Home({ navigate, firestoreData, user }) {
   const earnedCount = allBadges.filter(b=>b.unlocked).length;
 
   // Detect new users
-  const isNewUser = investments.length === 0 && spendings.length === 0 && autopayList.length === 0;
+  const isNewUser = investments.length === 0 && spendings.length === 0 && autopayList.length === 0 && incomes.length === 0;
 
   const reminders = autopayList.filter(sub => {
     if (!sub.active) return false;
@@ -218,6 +219,26 @@ export default function Home({ navigate, firestoreData, user }) {
         </div>
       </div>
 
+      {/* ✨ NEW v1.6: INCOME CARD (Option 1 — view this month's + all-time income) */}
+      <div className="p-5 mb-4 relative overflow-hidden" style={{...card, border:"1px solid rgba(251,191,36,0.15)"}}>
+        <div style={{position:"absolute",top:"-40px",right:"-40px",width:"150px",height:"150px",borderRadius:"50%",background:"radial-gradient(circle,rgba(251,191,36,0.12),transparent 70%)",pointerEvents:"none"}}/>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>💰 Income This Month</p>
+            <p className="text-2xl font-bold" style={{color:"#FBBF24"}}>{fmt(cInc)}</p>
+            <p className="text-xs mt-1" style={{color:"#4B5563"}}>All-time: {fmt(totalIncome)} · {incomes.length} {incomes.length===1?"entry":"entries"}</p>
+          </div>
+          <div style={{width:"52px",height:"52px",borderRadius:"14px",background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"26px",flexShrink:0}}>
+            💰
+          </div>
+        </div>
+        {incomes.length === 0 && (
+          <p className="text-xs mt-3" style={{color:"#6B7280"}}>
+            Tap the <span style={{color:"#FBBF24",fontWeight:600}}>+ button</span> → Income to add your salary or earnings.
+          </p>
+        )}
+      </div>
+
       {/* ── STAT CARDS ── */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         {[
@@ -281,9 +302,11 @@ export default function Home({ navigate, firestoreData, user }) {
           <p className="text-sm font-bold" style={{color:"#E5E7EB"}}>Monthly Quick Status</p>
         </div>
         <p className="text-sm leading-relaxed" style={{color:"#9CA3AF"}}>
-          {cs===0&&ci===0
+          {cs===0&&ci===0&&cInc===0
             ? "No activity this month yet. Tap + to add your first entry!"
-            : <>You spent{" "}<span style={{color:"#F87171",fontWeight:600}}>{fmt(cs)}</span>{" "}this month.{" "}
+            : <>
+                {cInc>0&&<>You earned{" "}<span style={{color:"#FBBF24",fontWeight:600}}>{fmt(cInc)}</span>{" "}this month. </>}
+                You spent{" "}<span style={{color:"#F87171",fontWeight:600}}>{fmt(cs)}</span>.{" "}
                 {ps>0&&<>{diff>0?"Increased":"Decreased"} by{" "}<span style={{color:diff>0?"#F87171":"#34D399",fontWeight:600}}>{fmt(Math.abs(diff))}</span>{" "}<span style={{color:"#FBBF24",fontWeight:600}}>({pct}%)</span> vs last month. </>}
                 {ci>0&&<>Invested{" "}<span style={{color:"#34D399",fontWeight:600}}>{fmt(ci)}</span> this month.</>}
               </>

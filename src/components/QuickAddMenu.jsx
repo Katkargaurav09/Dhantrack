@@ -22,8 +22,9 @@ export default function QuickAddMenu({ onAdd }) {
   }, []);
 
   const actions = [
-    { id: "investment", label: "Investment", icon: "📈", color: "#34D399", bg: "rgba(52,211,153,0.1)", border: "rgba(52,211,153,0.25)" },
-    { id: "spending",   label: "Spending",   icon: "💸", color: "#F87171", bg: "rgba(248,113,113,0.1)", border: "rgba(248,113,113,0.25)" },
+    { id: "income",     label: "Income",      icon: "💰", color: "#FBBF24", bg: "rgba(251,191,36,0.1)", border: "rgba(251,191,36,0.25)" }, // ✨ NEW v1.6
+    { id: "investment", label: "Investment",  icon: "📈", color: "#34D399", bg: "rgba(52,211,153,0.1)", border: "rgba(52,211,153,0.25)" },
+    { id: "spending",   label: "Spending",    icon: "💸", color: "#F87171", bg: "rgba(248,113,113,0.1)", border: "rgba(248,113,113,0.25)" },
     { id: "autopay",    label: "Subscription",icon: "🔔", color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", border: "rgba(139,92,246,0.25)" },
   ];
 
