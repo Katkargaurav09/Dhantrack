@@ -369,7 +369,7 @@ export default function Balance({ firestoreData }) {
   const [reportSharing,setReportSharing]=useState(false);
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
 
-  const { investments=[], spendings=[], incomes=[], categories=[], scoreHistory=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, loading=false, saveMonthScore } = firestoreData || {};
+  const { investments=[], spendings=[], incomes=[], categories=[], scoreHistory=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, netBasis="invested", loading=false, saveMonthScore } = firestoreData || {};
 
   const isPos = netBalance >= 0;
   const pct   = totalInvested + totalSpent > 0 ? Math.round(totalInvested / (totalInvested + totalSpent) * 100) : 50;
@@ -599,7 +599,11 @@ export default function Balance({ firestoreData }) {
           <div style={{position:"absolute",top:"-50px",right:"-50px",width:"180px",height:"180px",borderRadius:"50%",background:isPos?"radial-gradient(circle,rgba(52,211,153,0.12),transparent 70%)":"radial-gradient(circle,rgba(248,113,113,0.12),transparent 70%)",pointerEvents:"none"}}/>
           <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>Net Savings</p>
           <p className="text-4xl font-bold mb-1" style={{color:isPos?"#FBBF24":"#F87171"}}>{isPos?"+":""}{fmt(Math.abs(netBalance))}</p>
-          <p className="text-xs" style={{color:"#4B5563"}}>{isPos?"Saving more than spending 🎯":"Spending exceeds investments ⚠️"}</p>
+          <p className="text-xs" style={{color:"#4B5563"}}>
+            {netBasis === "income"
+              ? (isPos ? "Income − Spent · saving well 🎯" : "Spending exceeds income ⚠️")
+              : (isPos ? "Invested − Spent 🎯" : "Spending exceeds investments ⚠️")}
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
