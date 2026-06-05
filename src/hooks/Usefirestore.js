@@ -183,7 +183,6 @@ export default function useFirestore(uid) {
   // so they never see a fake "deficit".
   const hasIncome  = totalIncome > 0;
   const netBalance = hasIncome ? (totalIncome - totalSpent) : (totalInvested - totalSpent);
-  const netBasis   = hasIncome ? "income" : "invested"; // tells the UI how to label it
 
   return {
     investments,
@@ -203,6 +202,5 @@ export default function useFirestore(uid) {
     totalSpent,
     totalIncome,               // ✨ NEW v1.6
     netBalance,
-    netBasis,                  // ✨ NEW v1.8: "income" or "invested"
   };
 }

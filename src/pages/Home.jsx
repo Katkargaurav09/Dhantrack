@@ -67,7 +67,7 @@ export default function Home({ navigate, firestoreData, user }) {
     return () => unsub();
   }, [uid]);
 
-  const { investments=[], spendings=[], incomes=[], categories=[], customCategories=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, netBasis="invested", loading=false } = firestoreData || {};
+  const { investments=[], spendings=[], incomes=[], categories=[], customCategories=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, loading=false } = firestoreData || {};
 
   // Build full icon map from defaults + custom categories (legacy + new)
   const iconMap = { ...TYPE_ICON };
@@ -205,9 +205,7 @@ export default function Home({ navigate, firestoreData, user }) {
           {!isPos&&<span style={{fontSize:"16px",color:"#F87171",marginLeft:"8px"}}>deficit</span>}
         </p>
         <p className="text-xs mb-5" style={{color:"#4B5563"}}>
-          {netBasis === "income"
-            ? (isPos ? "Income − Spent" : "You're spending more than you earn")
-            : (isPos ? "Invested − Spent" : "You're spending more than investing")}
+          {isPos ? "Invested − Spent" : "You're spending more than investing"}
         </p>
         <div className="flex gap-3">
           <div className="flex-1 rounded-xl px-4 py-3" style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.15)"}}>
