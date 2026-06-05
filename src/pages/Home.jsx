@@ -80,7 +80,7 @@ export default function Home({ navigate, firestoreData, user }) {
   const cs      = spendings.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
   const ps      = spendings.filter(e=>mkey(e.date)===pm).reduce((s,e)=>s+e.amount,0);
   const ci      = investments.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0);
-  const cInc    = incomes.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0); // ✨ NEW v1.6: this month's income
+  const cInc    = incomes.filter(e=>mkey(e.date)===cm).reduce((s,e)=>s+e.amount,0); // this month's income
   const diff    = cs - ps;
   const pct     = ps > 0 ? Math.abs(Math.round((diff/ps)*100)) : 0;
   const dayName = now.toLocaleDateString("en-IN",{weekday:"long"}).toUpperCase();
@@ -187,7 +187,7 @@ export default function Home({ navigate, firestoreData, user }) {
         </div>
       )}
 
-      {/* ✨ NEW v1.5: PERSONALITY CARD */}
+      {/* PERSONALITY CARD */}
       {!isNewUser && (
         <PersonalityCard 
           firestoreData={firestoreData}
@@ -219,8 +219,9 @@ export default function Home({ navigate, firestoreData, user }) {
         </div>
       </div>
 
-      {/* ✨ NEW v1.6: INCOME CARD (Option 1 — view this month's + all-time income) */}
-      <div className="p-5 mb-4 relative overflow-hidden" style={{...card, border:"1px solid rgba(251,191,36,0.15)"}}>
+      {/* ✨ v1.6: INCOME CARD — now tappable, opens Income page */}
+      <button onClick={()=>navigate?.("income")} className="w-full text-left p-5 mb-4 relative overflow-hidden transition-all duration-200 hover:scale-[1.01]"
+        style={{...card, border:"1px solid rgba(251,191,36,0.15)", cursor:"pointer", fontFamily:"inherit"}}>
         <div style={{position:"absolute",top:"-40px",right:"-40px",width:"150px",height:"150px",borderRadius:"50%",background:"radial-gradient(circle,rgba(251,191,36,0.12),transparent 70%)",pointerEvents:"none"}}/>
         <div className="flex items-center justify-between">
           <div>
@@ -232,12 +233,16 @@ export default function Home({ navigate, firestoreData, user }) {
             💰
           </div>
         </div>
-        {incomes.length === 0 && (
+        {incomes.length === 0 ? (
           <p className="text-xs mt-3" style={{color:"#6B7280"}}>
-            Tap the <span style={{color:"#FBBF24",fontWeight:600}}>+ button</span> → Income to add your salary or earnings.
+            Tap to add your salary or earnings →
+          </p>
+        ) : (
+          <p className="text-xs mt-3 font-semibold" style={{color:"#FBBF24"}}>
+            View all income →
           </p>
         )}
-      </div>
+      </button>
 
       {/* ── STAT CARDS ── */}
       <div className="grid grid-cols-2 gap-3 mb-4">

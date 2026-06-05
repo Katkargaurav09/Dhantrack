@@ -3,6 +3,7 @@ import AuthPage      from "./pages/AuthPage";
 import Home          from "./pages/Home";
 import Investments   from "./pages/Investments";
 import Spending      from "./pages/Spending";
+import Income        from "./pages/Income";
 import Autopay       from "./pages/Autopay";
 import Goals         from "./pages/Goals";
 import Balance       from "./pages/Balance";
@@ -20,6 +21,7 @@ const NAV = [
   { id: "goals",       label: "Goals",  fullLabel: "Goals",       icon: "🎯" },
   { id: "balance",     label: "Stats",  fullLabel: "Balance",     icon: "⚖️" },
 ];
+// Note: "income" is intentionally NOT in NAV — it's reached from the Home card, not a bottom tab.
 
 function UserAvatar({ user, onLogout }) {
   const [open, setOpen] = useState(false);
@@ -114,7 +116,7 @@ function Header({ current, onChange, user, onLogout, onSearch }) {
 }
 
 function MobileTopbar({ current, user, onLogout, onSearch }) {
-  const page  = NAV.find(n=>n.id===current);
+  const page  = NAV.find(n=>n.id===current) || { icon:"💰", fullLabel:"Income" }; // income isn't in NAV
   const today = new Date().toLocaleDateString("en-IN",{day:"numeric",month:"short"});
   return (
     <header className="lg:hidden sticky top-0 z-40 flex items-center justify-between px-5 h-14 border-b border-white/10 bg-white/5 backdrop-blur-xl">
@@ -166,7 +168,7 @@ export default function App() {
   const [page, setPage] = useState("home");
   const [quickAddTrigger, setQuickAddTrigger] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [incomeOpen, setIncomeOpen] = useState(false); // ✨ NEW v1.6: income add-form overlay
+  const [incomeOpen, setIncomeOpen] = useState(false); // income add-form overlay (from global +)
 
   const { user, loading, login, register, loginWithGoogle, logout } = useAuth();
   const firestoreData = useFirestore(user?.uid || null);
@@ -189,9 +191,14 @@ export default function App() {
   }
 
   function handleQuickAdd(type) {
-    // ✨ NEW v1.6: income has no page — open the income add-form overlay instead
+    // income: if already ON the income page, let the page's own form handle it;
+    // otherwise open the quick overlay so user can add from anywhere.
     if (type === "income") {
-      setIncomeOpen(true);
+      if (page === "income") {
+        setQuickAddTrigger({ type, ts: Date.now() });
+      } else {
+        setIncomeOpen(true);
+      }
       return;
     }
 
@@ -213,7 +220,6 @@ export default function App() {
     }
   }
 
-  // ✨ NEW v1.6: save an income entry
   async function handleSaveIncome(entry) {
     await firestoreData.addEntry("incomes", entry);
   }
@@ -228,6 +234,7 @@ export default function App() {
       case "home":        return <Home        key="home"        navigate={changePage} firestoreData={firestoreData} user={user}/>;
       case "investments": return <Investments key="investments" firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
       case "spending":    return <Spending    key="spending"    firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger}/>;
+      case "income":      return <Income      key="income"      firestoreData={firestoreData} user={user} quickAddTrigger={quickAddTrigger} onBack={()=>changePage("home")}/>;
       case "autopay":     return <Autopay     key="autopay"     user={user} quickAddTrigger={quickAddTrigger}/>;
       case "goals":       return <Goals       key="goals"       firestoreData={firestoreData} user={user}/>;
       case "balance":     return <Balance     key="balance"     firestoreData={firestoreData} user={user}/>;
@@ -245,7 +252,7 @@ export default function App() {
       <BottomNav current={page} onChange={changePage}/>
       <QuickAddMenu onAdd={handleQuickAdd}/>
 
-      {/* ✨ NEW v1.6: Income add-form overlay (no separate page) */}
+      {/* Income add-form overlay (used when adding from the global + button outside the Income page) */}
       <IncomeAddPanel open={incomeOpen} onClose={()=>setIncomeOpen(false)} onSave={handleSaveIncome}/>
 
       {searchOpen && (
