@@ -205,7 +205,7 @@ export default function Home({ navigate, firestoreData, user }) {
           {!isPos&&<span style={{fontSize:"16px",color:"#F87171",marginLeft:"8px"}}>deficit</span>}
         </p>
         <p className="text-xs mb-5" style={{color:"#4B5563"}}>
-          {isPos ? "Invested − Spent" : "You're spending more than investing"}
+          {isPos ? "Saving more than spending 🎯" : "You're spending more than investing"}
         </p>
         <div className="flex gap-3">
           <div className="flex-1 rounded-xl px-4 py-3" style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.15)"}}>
