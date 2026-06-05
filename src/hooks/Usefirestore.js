@@ -13,6 +13,7 @@ export default function useFirestore(uid) {
   const [categories,       setCategories]       = useState([]);     // Legacy v1.4 (shared)
   const [customCategories, setCustomCategories] = useState([]);     // ✨ NEW v1.5 (with kind)
   const [learnedCategories,setLearnedCategories]= useState({});     // ✨ NEW v1.5 (auto-categorize)
+  const [scoreHistory,     setScoreHistory]     = useState([]);     // ✨ NEW v1.7 monthly score snapshots
   const [pools,            setPools]            = useState([]);
   const [loading,          setLoading]          = useState(true);
 
@@ -94,6 +95,17 @@ export default function useFirestore(uid) {
     return () => unsub();
   }, [uid]);
 
+  // ✨ NEW v1.7: Score history listener (one snapshot per completed month)
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(
+      collection(db, "users", uid, "scoreHistory"),
+      snap => setScoreHistory(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error("ScoreHistory error:", err.message)
+    );
+    return () => unsub();
+  }, [uid]);
+
   // ─── Pools listener (v1.4) ───
   useEffect(() => {
     if (!uid) return;
@@ -131,7 +143,6 @@ export default function useFirestore(uid) {
     if (!uid || !merchant || !category) return;
     const normalized = merchant.toLowerCase().trim();
     if (normalized.length < 3) return;
-    // Use deterministic doc ID based on merchant (overwrites if exists)
     const docId = normalized.replace(/[^a-z0-9]/g, "_").slice(0, 100);
     try {
       await setDoc(
@@ -148,6 +159,20 @@ export default function useFirestore(uid) {
     }
   }, [uid]);
 
+  // ✨ NEW v1.7: Save a month's final score snapshot (doc id = "YYYY-MM", frozen)
+  const saveMonthScore = useCallback(async (monthKey, score, meta = {}) => {
+    if (!uid || !monthKey) return;
+    try {
+      await setDoc(
+        doc(db, "users", uid, "scoreHistory", monthKey),
+        { month: monthKey, score: Math.round(score), ...meta, savedAt: serverTimestamp() },
+        { merge: true }
+      );
+    } catch (e) {
+      console.error("Save month score error:", e.message);
+    }
+  }, [uid]);
+
   // ─── Computed totals ───
   const totalInvested = investments.reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const totalSpent    = spendings.reduce((s, e) => s + (Number(e.amount) || 0), 0);
@@ -161,11 +186,13 @@ export default function useFirestore(uid) {
     categories,                // legacy v1.4
     customCategories,          // ✨ NEW v1.5
     learnedCategories,         // ✨ NEW v1.5
+    scoreHistory,              // ✨ NEW v1.7
     pools,
     loading,
     addEntry,
     deleteEntry,
     learnCategory,             // ✨ NEW v1.5
+    saveMonthScore,            // ✨ NEW v1.7
     totalInvested,
     totalSpent,
     totalIncome,               // ✨ NEW v1.6

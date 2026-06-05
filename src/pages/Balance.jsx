@@ -87,6 +87,28 @@ function BarChart({ months, investments, spendings }) {
   );
 }
 
+// ── Score trend mini-chart (history) ──
+function ScoreTrend({ points }) {
+  if (points.length < 2) return null;
+  const W = 320, H = 120, padX = 24, padY = 18;
+  const xs = (i) => padX + (i * (W - padX * 2)) / (points.length - 1);
+  const ys = (v) => H - padY - (v / 100) * (H - padY * 2);
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xs(i)} ${ys(p.score)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${W} ${H + 20}`} preserveAspectRatio="xMidYMid meet" style={{ width: "100%", maxHeight: "150px", display: "block" }}>
+      <line x1={padX} y1={ys(50)} x2={W - padX} y2={ys(50)} stroke="rgba(255,255,255,0.06)" strokeDasharray="3 4"/>
+      <path d={path} fill="none" stroke="#34D399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+      {points.map((p, i) => (
+        <g key={p.month}>
+          <circle cx={xs(i)} cy={ys(p.score)} r="4" fill="#34D399" stroke="#0F172A" strokeWidth="2"/>
+          <text x={xs(i)} y={ys(p.score) - 10} textAnchor="middle" fill="#E5E7EB" fontSize="11" fontWeight="700">{p.score}</text>
+          <text x={xs(i)} y={H + 12} textAnchor="middle" fill="#6B7280" fontSize="9">{mlabel(p.month).slice(0,3)}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 function computeStreak(investments, spendings) {
   const allDates = new Set([...investments.map(e=>e.date),...spendings.map(e=>e.date)]);
   let streak = 0;
@@ -100,8 +122,7 @@ function computeStreak(investments, spendings) {
   return streak;
 }
 
-// Health Score (components we can calculate today). Income improves savings accuracy.
-// ✨ Now also returns plain-language "reasons" explaining the score.
+// Live overall health score (all-time) + reasons + per-component rating
 function computeHealthScore({ totalIncome, totalSpent, investments, streak }) {
   let savingsPts = 0;
   let savingsRate = null;
@@ -119,42 +140,64 @@ function computeHealthScore({ totalIncome, totalSpent, investments, streak }) {
   const consistencyPts = Math.max(0, Math.min(1, streak / 14)) * 20;
   const subsPts = 15;
 
+  const rate = (pts, max) => {
+    const r = pts / max;
+    if (r >= 0.8) return "Excellent";
+    if (r >= 0.5) return "Good";
+    if (r >= 0.25) return "Fair";
+    return "Poor";
+  };
+
   const components = [
     { label: "Savings Rate",  pts: Math.round(savingsPts),     max: 35, tip: "Save 20%+ of your income for full points." },
     { label: "Investing",     pts: Math.round(investPts),      max: 30, tip: "Invest regularly — 10+ entries unlocks full points." },
     { label: "Consistency",   pts: Math.round(consistencyPts), max: 20, tip: "Track daily — a 14-day streak gives full points." },
     { label: "Subscriptions", pts: Math.round(subsPts),        max: 15, tip: "Keep autopay under ₹2,000/month." },
-  ];
+  ].map(c => ({ ...c, rating: rate(c.pts, c.max) }));
+
   const total = Math.max(0, Math.min(100, components.reduce((s, c) => s + c.pts, 0)));
 
-  // ✨ Plain-language reasons (the "why")
+  // negatives ("why")
   const reasons = [];
-  if (totalIncome > 0 && totalSpent > totalIncome) {
-    reasons.push({ type: "down", text: "Spending is higher than your income" });
-  } else if (savingsRate !== null && savingsRate < 0.2 && savingsRate >= 0) {
-    reasons.push({ type: "down", text: "Savings rate is below 20%" });
-  } else if (savingsRate !== null && savingsRate >= 0.2) {
-    reasons.push({ type: "up", text: "Good savings rate — you keep 20%+ of income" });
-  }
-  if (investments.length === 0) {
-    reasons.push({ type: "down", text: "No investments added yet" });
-  } else if (investments.length >= 10) {
-    reasons.push({ type: "up", text: "Strong investing habit (10+ entries)" });
-  } else {
-    reasons.push({ type: "neutral", text: `${investments.length} investment ${investments.length===1?"entry":"entries"} so far` });
-  }
-  if (streak <= 1) {
-    reasons.push({ type: "down", text: `Only ${streak}-day tracking streak` });
-  } else if (streak >= 14) {
-    reasons.push({ type: "up", text: `${streak}-day tracking streak — excellent consistency` });
-  } else {
-    reasons.push({ type: "neutral", text: `${streak}-day tracking streak` });
-  }
+  if (totalIncome > 0 && totalSpent > totalIncome) reasons.push({ type:"down", text:"Spending is higher than your income" });
+  else if (savingsRate !== null && savingsRate >= 0 && savingsRate < 0.2) reasons.push({ type:"down", text:"Savings rate is below 20%" });
+  else if (savingsRate !== null && savingsRate >= 0.2) reasons.push({ type:"up", text:"Good savings rate — you keep 20%+ of income" });
+  if (investments.length === 0) reasons.push({ type:"down", text:"No investments added yet" });
+  else if (investments.length >= 10) reasons.push({ type:"up", text:"Strong investing habit (10+ entries)" });
+  else reasons.push({ type:"neutral", text:`${investments.length} investment ${investments.length===1?"entry":"entries"} so far` });
+  if (streak <= 1) reasons.push({ type:"down", text:`Only ${streak}-day tracking streak` });
+  else if (streak >= 14) reasons.push({ type:"up", text:`${streak}-day tracking streak — excellent consistency` });
+  else reasons.push({ type:"neutral", text:`${streak}-day tracking streak` });
 
-  return { total, components, reasons };
+  // ✨ P4 positives ("what you're doing well")
+  const positives = [];
+  components.forEach(c => {
+    if (c.rating === "Excellent" || c.rating === "Good") {
+      if (c.label === "Savings Rate")  positives.push("Healthy savings rate");
+      if (c.label === "Investing")     positives.push("Investment activity recorded");
+      if (c.label === "Consistency")   positives.push("Consistent tracking habit");
+      if (c.label === "Subscriptions") positives.push("Subscription spending under control");
+    }
+  });
+  if (streak >= 3) positives.push(`${streak}-day tracking streak`);
+
+  return { total, components, reasons, positives: [...new Set(positives)] };
 }
 
-// ── Monthly report IMAGE (Report tab share) — unchanged ──
+// ✨ Per-MONTH score (same shape as live, but for one month) — used for history snapshots
+function computeMonthScore({ monthIncome, monthSpent, monthInvestCount }) {
+  let savingsPts = 0;
+  if (monthIncome > 0) {
+    const rate = (monthIncome - monthSpent) / monthIncome;
+    savingsPts = Math.max(0, Math.min(1, rate / 0.2)) * 45;
+  } else if (monthInvestCount > 0) {
+    savingsPts = 22;
+  }
+  const investPts = Math.max(0, Math.min(1, monthInvestCount / 5)) * 35;
+  const activityPts = (monthIncome > 0 || monthSpent > 0 || monthInvestCount > 0) ? 20 : 0;
+  return Math.round(Math.max(0, Math.min(100, savingsPts + investPts + activityPts)));
+}
+
 async function exportReportImage(investments, spendings, incomes, totalInvested, totalSpent, netBalance) {
   const now   = new Date();
   const month = now.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
@@ -220,7 +263,6 @@ async function exportReportImage(investments, spendings, incomes, totalInvested,
   });
 }
 
-// ── FULL-DATA PDF (top Export button) — unchanged ──
 async function exportFullPDF(investments, spendings, incomes, totalInvested, totalSpent, totalIncome) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const now = new Date();
@@ -293,7 +335,6 @@ async function exportFullPDF(investments, spendings, incomes, totalInvested, tot
   }
 }
 
-// ✨ Helper: percent change with safe handling of zero baselines
 function pctChange(curr, prev) {
   if (prev === 0 && curr === 0) return { text: "no change", dir: "flat" };
   if (prev === 0) return { text: "new this month", dir: "up" };
@@ -310,7 +351,7 @@ export default function Balance({ firestoreData }) {
   const [reportSharing,setReportSharing]=useState(false);
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
 
-  const { investments=[], spendings=[], incomes=[], categories=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, loading=false } = firestoreData || {};
+  const { investments=[], spendings=[], incomes=[], categories=[], scoreHistory=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, loading=false, saveMonthScore } = firestoreData || {};
 
   const isPos = netBalance >= 0;
   const pct   = totalInvested + totalSpent > 0 ? Math.round(totalInvested / (totalInvested + totalSpent) * 100) : 50;
@@ -339,7 +380,6 @@ export default function Balance({ firestoreData }) {
     color: CAT_COLORS[i % CAT_COLORS.length],
   })).filter(d => d.value > 0);
 
-  // ── Current vs previous month ──
   const now = new Date();
   const cm = mkey(now.toISOString());
   const pmDate = new Date(now.getFullYear(), now.getMonth()-1, 1);
@@ -358,36 +398,65 @@ export default function Balance({ firestoreData }) {
   const pmSpeTotal = spendings.filter(e=>mkey(e.date)===pm).reduce((s,e)=>s+e.amount,0);
   const pmIncTotal = incomes.filter(e=>mkey(e.date)===pm).reduce((s,e)=>s+e.amount,0);
 
-  // top spending categories THIS MONTH
   const cmCatAgg = {};
   cmSpe.forEach(e => { const c=e.type||"Other"; cmCatAgg[c]=(cmCatAgg[c]||0)+Number(e.amount); });
   const cmTopCats = Object.entries(cmCatAgg).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const cmTopCat = cmTopCats[0];
 
-  // ── what-changed lines ──
   const incChange = pctChange(cmIncTotal, pmIncTotal);
   const speChange = pctChange(cmSpeTotal, pmSpeTotal);
   const invChange = pctChange(cmInvTotal, pmInvTotal);
 
-  // ── month letter grade (from this month's savings rate + investing) ──
   function monthGrade() {
     let score = 0;
     if (cmIncTotal > 0) {
       const rate = (cmIncTotal - cmSpeTotal) / cmIncTotal;
       if (rate >= 0.3) score += 50; else if (rate >= 0.15) score += 35; else if (rate >= 0) score += 20;
-    } else if (cmSpeTotal === 0) {
-      score += 25; // no income logged & no spend — neutral
-    }
+    } else if (cmSpeTotal === 0) score += 25;
     if (cmInvTotal > 0) score += 30;
-    if (cmSpeTotal <= pmSpeTotal) score += 20; // spent same or less than last month
-    if (score >= 80) return { g: "A", c: "#34D399" };
-    if (score >= 60) return { g: "B", c: "#FBBF24" };
-    if (score >= 40) return { g: "C", c: "#FB923C" };
-    return { g: "D", c: "#F87171" };
+    if (cmSpeTotal <= pmSpeTotal) score += 20;
+    if (score >= 80) return { g:"A", c:"#34D399" };
+    if (score >= 60) return { g:"B", c:"#FBBF24" };
+    if (score >= 40) return { g:"C", c:"#FB923C" };
+    return { g:"D", c:"#F87171" };
   }
   const grade = monthGrade();
 
-  // ── gentle suggestions ──
+  // ✨ P2 grade explanation — rate each part for THIS month
+  function rateWord(r){ if(r>=0.8)return{t:"Excellent",c:"#34D399"}; if(r>=0.5)return{t:"Good",c:"#FBBF24"}; if(r>=0.25)return{t:"Fair",c:"#FB923C"}; return{t:"Poor",c:"#F87171"};}
+  const savingsRateM = cmIncTotal>0 ? Math.max(0,(cmIncTotal-cmSpeTotal)/cmIncTotal) : (cmInvTotal>0?0.5:0);
+  const gradeParts = [
+    { label:"Savings",      ...rateWord(Math.min(1, savingsRateM/0.3)) },
+    { label:"Investing",    ...rateWord(cmInvTotal>0 ? 1 : 0) },
+    { label:"Spending",     ...rateWord(cmSpeTotal<=pmSpeTotal ? 1 : (pmSpeTotal>0 ? Math.max(0,1-((cmSpeTotal-pmSpeTotal)/pmSpeTotal)) : 0.5)) },
+    { label:"Consistency",  ...rateWord(Math.min(1, cmSpe.length/8)) },
+  ];
+
+  // ✨ P3 headline — pick the single biggest insight
+  function headline() {
+    if (cmIncTotal > 0 && cmSpeTotal > cmIncTotal) {
+      const over = Math.round(((cmSpeTotal - cmIncTotal) / cmIncTotal) * 100);
+      return { text:`You spent ${over}% more than you earned this month.`, tone:"bad" };
+    }
+    if (cmTopCat && cmSpeTotal > 0) {
+      const share = Math.round((cmTopCat[1]/cmSpeTotal)*100);
+      if (share >= 60) return { text:`${share}% of your spending went to ${cmTopCat[0]}.`, tone:"warn" };
+    }
+    if (pmIncTotal > 0 && cmIncTotal < pmIncTotal) {
+      const drop = Math.round(((pmIncTotal - cmIncTotal)/pmIncTotal)*100);
+      if (drop >= 40) return { text:`Your income dropped ${drop}% from last month.`, tone:"warn" };
+    }
+    if (cmIncTotal > 0 && (cmIncTotal-cmSpeTotal)/cmIncTotal >= 0.3) {
+      const saved = Math.round(((cmIncTotal-cmSpeTotal)/cmIncTotal)*100);
+      return { text:`Great month — you saved ${saved}% of your income! 🎉`, tone:"good" };
+    }
+    if (cmInvTotal > 0) return { text:`You invested ${fmt(cmInvTotal)} this month. 📈`, tone:"good" };
+    if (cmSpeTotal===0 && cmIncTotal===0 && cmInvTotal===0) return { text:"No activity yet this month — add an entry to begin.", tone:"neutral" };
+    return { text:`You spent ${fmt(cmSpeTotal)} this month.`, tone:"neutral" };
+  }
+  const head = headline();
+  const headColor = head.tone==="bad" ? "#F87171" : head.tone==="warn" ? "#FB923C" : head.tone==="good" ? "#34D399" : "#9CA3AF";
+
   const suggestions = [];
   if (cmTopCat) suggestions.push(`Your biggest spend is ${cmTopCat[0]} (${fmt(cmTopCat[1])}) — worth a quick look.`);
   if (cmInvTotal === 0) suggestions.push("Consider investing a little this month, even a small amount helps.");
@@ -395,11 +464,35 @@ export default function Balance({ firestoreData }) {
   if (cmIncTotal > 0 && (cmIncTotal - cmSpeTotal) / cmIncTotal < 0.2 && cmSpeTotal <= cmIncTotal) suggestions.push("Try to save at least 20% of your income.");
   if (suggestions.length === 0) suggestions.push("You're doing well this month — keep it up! 🎯");
 
-  // Health Score
   const streak = computeStreak(investments, spendings);
   const health = computeHealthScore({ totalIncome, totalSpent, investments, streak });
   const scoreColor = health.total >= 71 ? "#34D399" : health.total >= 41 ? "#FBBF24" : "#F87171";
   const scoreLabel = health.total >= 71 ? "Good" : health.total >= 41 ? "Fair" : "Needs Work";
+
+  // ✨ P1 history catch-up: when this page opens, save score for any COMPLETED month missing a snapshot
+  useEffect(() => {
+    if (!saveMonthScore || loading) return;
+    const savedKeys = new Set(scoreHistory.map(s => s.month));
+    // every month that has data, EXCEPT the current (still-running) month
+    const completed = allMonths.filter(mk => mk !== cm);
+    completed.forEach(mk => {
+      if (savedKeys.has(mk)) return;
+      const mInc = incomes.filter(e=>mkey(e.date)===mk).reduce((s,e)=>s+e.amount,0);
+      const mSpe = spendings.filter(e=>mkey(e.date)===mk).reduce((s,e)=>s+e.amount,0);
+      const mInvC = investments.filter(e=>mkey(e.date)===mk).length;
+      const sc = computeMonthScore({ monthIncome:mInc, monthSpent:mSpe, monthInvestCount:mInvC });
+      saveMonthScore(mk, sc, { income:mInc, spent:mSpe });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, scoreHistory.length, allMonths.length]);
+
+  // build trend points (sorted oldest→newest), last 6
+  const trendPoints = [...scoreHistory]
+    .filter(s => typeof s.score === "number")
+    .sort((a,b) => a.month < b.month ? -1 : 1)
+    .slice(-6)
+    .map(s => ({ month: s.month, score: s.score }));
+  const trendDelta = trendPoints.length >= 2 ? trendPoints[trendPoints.length-1].score - trendPoints[trendPoints.length-2].score : null;
 
   async function handleExport() {
     setExporting(true); setExportMsg("");
@@ -610,11 +703,16 @@ export default function Balance({ firestoreData }) {
         </div>
       </>)}
 
-      {/* ✨ UPGRADED Report tab — real report */}
       {tab === "report" && (<>
-        {/* Header with letter grade */}
-        <div className="p-5 mb-4 relative overflow-hidden" style={{...card}}>
-          <div style={{position:"absolute",top:"-40px",right:"-40px",width:"160px",height:"160px",borderRadius:"50%",background:"radial-gradient(circle,rgba(52,211,153,0.12),transparent 70%)",pointerEvents:"none"}}/>
+        {/* ✨ P3 HEADLINE */}
+        <div className="p-5 mb-4 relative overflow-hidden" style={{...card,border:`1px solid ${headColor}30`}}>
+          <div style={{position:"absolute",top:"-40px",right:"-40px",width:"160px",height:"160px",borderRadius:"50%",background:`radial-gradient(circle,${headColor}18,transparent 70%)`,pointerEvents:"none"}}/>
+          <p className="text-xs font-mono uppercase tracking-widest mb-2" style={{color:"#6B7280"}}>{monthLabel} · Summary</p>
+          <p style={{color:headColor,fontSize:"20px",fontWeight:800,lineHeight:1.3}}>{head.text}</p>
+        </div>
+
+        {/* Grade + totals */}
+        <div className="p-5 mb-4" style={{...card}}>
           <div className="flex items-start justify-between mb-4">
             <div>
               <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>Financial Report</p>
@@ -628,7 +726,7 @@ export default function Balance({ firestoreData }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-2 mb-4">
             <div style={{padding:"12px",background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.15)",borderRadius:"12px"}}>
               <p className="text-xs" style={{color:"#6B7280"}}>Income</p>
               <p className="text-base font-bold font-mono" style={{color:"#FBBF24"}}>{fmt(cmIncTotal)}</p>
@@ -640,6 +738,19 @@ export default function Balance({ firestoreData }) {
             <div style={{padding:"12px",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.15)",borderRadius:"12px"}}>
               <p className="text-xs" style={{color:"#6B7280"}}>Spent</p>
               <p className="text-base font-bold font-mono" style={{color:"#F87171"}}>{fmt(cmSpeTotal)}</p>
+            </div>
+          </div>
+
+          {/* ✨ P2 grade explanation */}
+          <div style={{padding:"12px",background:"rgba(255,255,255,0.03)",borderRadius:"12px"}}>
+            <p className="text-xs mb-2" style={{color:"#6B7280"}}>Why grade {grade.g}?</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {gradeParts.map(p=>(
+                <div key={p.label} className="flex justify-between items-center">
+                  <span className="text-xs" style={{color:"#9CA3AF"}}>{p.label}</span>
+                  <span className="text-xs font-semibold" style={{color:p.c}}>{p.t}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -683,7 +794,7 @@ export default function Balance({ firestoreData }) {
           <p style={{color:"#4B5563",fontSize:"10px",marginTop:"4px"}}>Compared with {mlabel(pm)}.</p>
         </div>
 
-        {/* What should I do */}
+        {/* Suggestions */}
         <div className="p-5 mb-4" style={{...card,border:"1px solid rgba(52,211,153,0.12)"}}>
           <p className="text-sm font-bold mb-3" style={{color:"#E5E7EB"}}>💡 Suggestions</p>
           {suggestions.map((s,i)=>(
@@ -693,13 +804,6 @@ export default function Balance({ firestoreData }) {
             </div>
           ))}
         </div>
-
-        {cmInv.length === 0 && cmSpe.length === 0 && cmIncm.length === 0 && (
-          <div style={{...card,textAlign:"center",padding:"32px 20px",color:"#4B5563",marginBottom:"16px"}}>
-            <p style={{fontSize:"32px",marginBottom:"8px"}}>📄</p>
-            <p style={{fontSize:"13px"}}>No activity this month yet</p>
-          </div>
-        )}
 
         <button onClick={handleShareReport} disabled={reportSharing} style={{
           width:"100%",padding:"13px",marginBottom:"8px",
@@ -711,7 +815,6 @@ export default function Balance({ firestoreData }) {
         </button>
       </>)}
 
-      {/* ✨ UPGRADED Score tab — explains WHY */}
       {tab === "score" && (<>
         <div className="p-6 mb-4 relative overflow-hidden" style={{...card,textAlign:"center"}}>
           <div style={{position:"absolute",top:"-50px",left:"50%",transform:"translateX(-50%)",width:"220px",height:"220px",borderRadius:"50%",background:`radial-gradient(circle, ${scoreColor}22, transparent 70%)`,pointerEvents:"none"}}/>
@@ -732,7 +835,39 @@ export default function Balance({ firestoreData }) {
           <p style={{color:scoreColor,fontWeight:700,fontSize:"15px"}}>{scoreLabel}</p>
         </div>
 
-        {/* ✨ WHY this score */}
+        {/* ✨ P1 score trend (history) */}
+        <div style={{...card,padding:"16px",marginBottom:"16px"}}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs uppercase tracking-wider font-mono" style={{color:"#6B7280"}}>Your Progress</p>
+            {trendDelta !== null && (
+              <span className="text-xs font-bold font-mono" style={{color: trendDelta>0?"#34D399":trendDelta<0?"#F87171":"#9CA3AF"}}>
+                {trendDelta>0?`▲ +${trendDelta}`:trendDelta<0?`▼ ${trendDelta}`:"no change"} vs prev
+              </span>
+            )}
+          </div>
+          {trendPoints.length >= 2 ? (
+            <ScoreTrend points={trendPoints}/>
+          ) : (
+            <p style={{color:"#4B5563",fontSize:"12px",lineHeight:1.5,padding:"8px 0"}}>
+              Keep using DhanTrack — your score for each finished month will appear here so you can see your progress over time. {trendPoints.length===1 ? `So far: ${mlabel(trendPoints[0].month)} = ${trendPoints[0].score}.` : ""}
+            </p>
+          )}
+        </div>
+
+        {/* ✨ P4 what you're doing well */}
+        {health.positives.length > 0 && (
+          <div style={{...card,padding:"16px",marginBottom:"16px",border:"1px solid rgba(52,211,153,0.15)"}}>
+            <p className="text-xs uppercase tracking-wider font-mono mb-3" style={{color:"#6B7280"}}>What you're doing well</p>
+            {health.positives.map((p,i)=>(
+              <div key={i} className="flex items-start gap-2" style={{marginBottom: i<health.positives.length-1?"9px":0}}>
+                <span style={{color:"#34D399",fontSize:"13px",lineHeight:"1.4"}}>✓</span>
+                <p style={{color:"#E5E7EB",fontSize:"12px",lineHeight:"1.4"}}>{p}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Why this score (negatives/neutral) */}
         <div style={{...card,padding:"16px",marginBottom:"16px"}}>
           <p className="text-xs uppercase tracking-wider font-mono mb-3" style={{color:"#6B7280"}}>Why this score?</p>
           {health.reasons.map((r,i)=>{
@@ -754,7 +889,7 @@ export default function Balance({ firestoreData }) {
             return (
               <div key={c.label} style={{marginBottom:"14px"}}>
                 <div className="flex justify-between text-xs mb-1">
-                  <span style={{color:"#E5E7EB",fontWeight:600}}>{c.label}</span>
+                  <span style={{color:"#E5E7EB",fontWeight:600}}>{c.label} <span style={{color:c.rating==="Excellent"||c.rating==="Good"?"#34D399":c.rating==="Fair"?"#FB923C":"#F87171",fontWeight:500}}>· {c.rating}</span></span>
                   <span style={{color:"#9CA3AF",fontFamily:"monospace"}}>{c.pts}/{c.max}</span>
                 </div>
                 <div style={{height:"5px",background:"rgba(255,255,255,0.05)",borderRadius:"99px",overflow:"hidden",marginBottom:"4px"}}>
