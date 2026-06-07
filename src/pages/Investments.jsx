@@ -4,6 +4,7 @@
   import CategoryDetail from "./CategoryDetail";
   import CustomCategoryPanel from "../components/CustomCategoryPanel";
   import { suggestCategory, extractMerchant } from "../utils/keywordMap";
+  import { CRYPTO_COINS } from "../hooks/Usefirestore";
 
   const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
   const DEFAULT_TYPES=["Stock","Crypto","Mutual Fund","Gold","FD/RD","ETF","Other"];
@@ -160,6 +161,10 @@
     const [saving,setSaving]=useState(false);
     const [suggestion, setSuggestion] = useState(null);
     const [userPickedManually, setUserPickedManually] = useState(false);
+    // ✨ v1.9 live-price (crypto)
+    const [liveTrack, setLiveTrack] = useState(false);
+    const [coinId,    setCoinId]    = useState("bitcoin");
+    const [buyPrice,  setBuyPrice]  = useState("");
 
     useEffect(() => {
       if (!open) return;
@@ -167,10 +172,18 @@
         setName(editEntry.name || ""); setAmount(String(editEntry.amount || ""));
         setDate(editEntry.date || new Date().toISOString().split("T")[0]);
         setType(editEntry.type || "Stock"); setNote(editEntry.note || "");
+        // ✨ v1.9 load live-price fields if this entry has them
+        setLiveTrack(!!editEntry.liveTrack);
+        setCoinId(editEntry.coinId || "bitcoin");
+        setBuyPrice(editEntry.buyPrice ? String(editEntry.buyPrice) : "");
       } else {
         setName(""); setAmount(""); setNote("");
         setType(presetType || "Stock");
         setDate(new Date().toISOString().split("T")[0]);
+        // ✨ v1.9 reset live-price
+        setLiveTrack(false);
+        setCoinId("bitcoin");
+        setBuyPrice("");
       }
       setSuggestion(null);
       setUserPickedManually(false);
@@ -193,16 +206,37 @@
 
     async function save() {
       if (!name.trim() || !amount || !date) return alert("Fill all fields");
+      // ✨ v1.9 if live tracking on, need a buy price
+      const wantLive = liveTrack && type === "Crypto";
+      if (wantLive && (!buyPrice || parseFloat(buyPrice) <= 0)) return alert("Enter the buy price per coin");
+      const coin = CRYPTO_COINS.find(c => c.id === coinId);
       setSaving(true);
       try {
         if (isEdit) {
-          await updateDoc(doc(db, "users", uid, "investments", editEntry.id), {
+          const upd = {
             name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim(),
-          });
+          };
+          // ✨ v1.9 live-price fields (write or clear)
+          if (wantLive) {
+            upd.liveTrack = true;
+            upd.coinId = coinId;
+            upd.coinSymbol = coin ? coin.symbol : null;
+            upd.buyPrice = parseFloat(buyPrice);
+          } else {
+            upd.liveTrack = false;
+          }
+          await updateDoc(doc(db, "users", uid, "investments", editEntry.id), upd);
         } else {
           // ✨ FIX #2: auto-tag entry with custom category if we're inside one
           const entryData = { name: name.trim(), amount: parseFloat(amount), date, type, note: note.trim() };
           if (presetCustomTagId) entryData.customTags = [presetCustomTagId];
+          // ✨ v1.9 live-price fields
+          if (wantLive) {
+            entryData.liveTrack = true;
+            entryData.coinId = coinId;
+            entryData.coinSymbol = coin ? coin.symbol : null;
+            entryData.buyPrice = parseFloat(buyPrice);
+          }
           await onSave(entryData);
 
           if (learnCategory && name.trim().length >= 3) {
@@ -274,6 +308,55 @@
                 {allTypes.map(t=><option key={t.name} value={t.name} style={{background:"#0F172A",color:"#E5E7EB",fontFamily:"system-ui, -apple-system, sans-serif",fontStyle:"normal"}}>{t.icon} {t.name}</option>)}
               </select>
             </div>
+
+            {/* ✨ v1.9: Live price toggle — only for Crypto */}
+            {type === "Crypto" && (
+              <div style={{padding:"12px",background:"rgba(251,191,36,0.05)",border:"1px solid rgba(251,191,36,0.18)",borderRadius:"12px"}}>
+                <div className="flex items-center justify-between">
+                  <div style={{flex:1,paddingRight:"10px"}}>
+                    <p style={{color:"#FBBF24",fontSize:"13px",fontWeight:700}}>📈 Track live price</p>
+                    <p style={{color:"#9CA3AF",fontSize:"11px",marginTop:"2px",lineHeight:1.4}}>See current value & profit/loss in Holdings</p>
+                  </div>
+                  <button type="button" onClick={()=>setLiveTrack(v=>!v)} style={{
+                    width:"46px",height:"26px",borderRadius:"99px",flexShrink:0,cursor:"pointer",
+                    border:"none",position:"relative",transition:"background .2s",
+                    background: liveTrack ? "#FBBF24" : "rgba(255,255,255,0.15)",
+                  }}>
+                    <span style={{
+                      position:"absolute",top:"3px",left: liveTrack ? "23px" : "3px",
+                      width:"20px",height:"20px",borderRadius:"50%",background:"#fff",
+                      transition:"left .2s",
+                    }}/>
+                  </button>
+                </div>
+
+                {liveTrack && (
+                  <div style={{marginTop:"12px"}} className="space-y-3">
+                    <div>
+                      <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Coin</label>
+                      <select value={coinId} onChange={e=>setCoinId(e.target.value)} style={selectStyle}>
+                        {CRYPTO_COINS.map(c=>(
+                          <option key={c.id} value={c.id} style={{background:"#0F172A",color:"#E5E7EB",fontStyle:"normal"}}>
+                            {c.name} ({c.symbol})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Buy price per coin (₹)</label>
+                      <input type="number" value={buyPrice} onChange={e=>setBuyPrice(e.target.value)} placeholder="e.g. 5000000" style={inp}/>
+                      {amount && buyPrice && parseFloat(buyPrice) > 0 && (
+                        <p style={{color:"#34D399",fontSize:"11px",marginTop:"6px"}}>
+                          ≈ {(parseFloat(amount)/parseFloat(buyPrice)).toLocaleString("en-IN",{maximumFractionDigits:8})} coins
+                          <span style={{color:"#6B7280"}}> (from amount ÷ buy price)</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ✨ FIX #2: show that entry will be auto-tagged */}
             {presetCustomTagId && !isEdit && (
               <div style={{padding:"10px 12px",background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.18)",borderRadius:"10px"}}>
@@ -520,6 +603,148 @@
     );
   }
 
+  // ✨ NEW v1.9: Holdings view — live crypto value + profit/loss
+  function HoldingsView({ investments, cryptoPrices, pricesUpdatedAt, pricesLoading, onRefresh, onBack, onEdit }) {
+    // only crypto entries with live tracking + a coin + buy price
+    const holdings = investments
+      .filter(e => e.liveTrack && e.coinId && e.buyPrice > 0 && e.amount > 0)
+      .map(e => {
+        const qty       = Number(e.amount) / Number(e.buyPrice);   // coins bought
+        const livePrice = cryptoPrices[e.coinId] || null;
+        const invested  = Number(e.amount);
+        const current   = livePrice ? qty * livePrice : null;
+        const pl        = current !== null ? current - invested : null;
+        const plPct     = current !== null && invested > 0 ? (pl / invested) * 100 : null;
+        return { ...e, qty, livePrice, invested, current, pl, plPct };
+      })
+      .sort((a,b) => new Date(b.date) - new Date(a.date));
+
+    const totalInvested = holdings.reduce((s,h) => s + h.invested, 0);
+    const totalCurrent  = holdings.reduce((s,h) => s + (h.current ?? h.invested), 0);
+    const totalPL       = totalCurrent - totalInvested;
+    const totalPLPct    = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
+    const haveAnyPrice  = holdings.some(h => h.livePrice !== null);
+
+    function ago(iso) {
+      if (!iso) return "never";
+      const mins = Math.floor((Date.now() - new Date(iso).getTime())/60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return mins + " min ago";
+      const hrs = Math.floor(mins/60);
+      if (hrs < 24) return hrs + (hrs===1?" hour ago":" hours ago");
+      const days = Math.floor(hrs/24);
+      return days + (days===1?" day ago":" days ago");
+    }
+
+    return (
+      <div>
+        <button onClick={onBack} className="text-sm font-medium block mb-4" style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>← Back</button>
+
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-bold" style={{color:"#E5E7EB"}}>📊 Holdings</h1>
+            <p className="text-xs font-mono mt-0.5" style={{color:"#6B7280"}}>Live crypto value · updated {ago(pricesUpdatedAt)}</p>
+          </div>
+          <button onClick={onRefresh} disabled={pricesLoading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+            style={{background:"rgba(251,191,36,0.1)",border:"1px solid rgba(251,191,36,0.2)",color:"#FBBF24",cursor:pricesLoading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {pricesLoading ? "..." : "↻ Refresh"}
+          </button>
+        </div>
+
+        {holdings.length === 0 ? (
+          <div style={{...card,textAlign:"center",padding:"48px 20px",color:"#4B5563"}}>
+            <p style={{fontSize:"40px",marginBottom:"10px"}}>📊</p>
+            <p style={{fontSize:"15px",color:"#E5E7EB",fontWeight:"600",marginBottom:"6px"}}>No live holdings yet</p>
+            <p style={{fontSize:"13px",lineHeight:1.5}}>Add a Crypto investment and turn on<br/>"Track live price" to see it here.</p>
+          </div>
+        ) : (<>
+          {/* Summary */}
+          <div className="p-5 mb-4 relative overflow-hidden" style={{...card,border:`1px solid ${totalPL>=0?"rgba(52,211,153,0.18)":"rgba(248,113,113,0.18)"}`}}>
+            <p className="text-xs font-mono uppercase tracking-widest mb-1" style={{color:"#6B7280"}}>Current Value</p>
+            <p className="text-3xl font-bold mb-1" style={{color:"#E5E7EB"}}>{fmt(totalCurrent)}</p>
+            {haveAnyPrice ? (
+              <p className="text-sm font-bold" style={{color: totalPL>=0 ? "#34D399" : "#F87171"}}>
+                {totalPL>=0?"▲ +":"▼ "}{fmt(Math.abs(totalPL))} ({totalPL>=0?"+":""}{totalPLPct.toFixed(1)}%)
+              </p>
+            ) : (
+              <p className="text-xs" style={{color:"#FBBF24"}}>Prices loading… tap ↻ Refresh</p>
+            )}
+            <div className="flex gap-3 mt-4">
+              <div className="flex-1 rounded-xl px-4 py-2" style={{background:"rgba(255,255,255,0.03)"}}>
+                <p className="text-xs" style={{color:"#6B7280"}}>Invested</p>
+                <p className="font-bold" style={{color:"#9CA3AF"}}>{fmt(totalInvested)}</p>
+              </div>
+              <div className="flex-1 rounded-xl px-4 py-2" style={{background:"rgba(255,255,255,0.03)"}}>
+                <p className="text-xs" style={{color:"#6B7280"}}>Profit / Loss</p>
+                <p className="font-bold" style={{color: totalPL>=0 ? "#34D399" : "#F87171"}}>{totalPL>=0?"+":""}{fmt(totalPL)}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Each holding */}
+          <div className="space-y-3">
+            {holdings.map(h => {
+              const up = h.pl !== null && h.pl >= 0;
+              return (
+                <div key={h.id} style={{...card,padding:"16px"}}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div style={{display:"flex",alignItems:"center",gap:"10px",minWidth:0}}>
+                      <span style={{fontSize:"22px"}}>₿</span>
+                      <div style={{minWidth:0}}>
+                        <p style={{color:"#E5E7EB",fontSize:"14px",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.name}</p>
+                        <p style={{color:"#6B7280",fontSize:"11px",fontFamily:"monospace"}}>
+                          {h.coinSymbol} · {h.qty.toLocaleString("en-IN",{maximumFractionDigits:6})} coins
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={()=>onEdit(h)} title="Edit" style={{color:"#8B5CF6",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.2)",borderRadius:"8px",padding:"6px",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0}}>
+                      <Pencil/>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    <div>
+                      <p style={{color:"#6B7280",fontSize:"10px"}}>Invested</p>
+                      <p style={{color:"#9CA3AF",fontSize:"13px",fontWeight:600,fontFamily:"monospace"}}>{fmt(h.invested)}</p>
+                    </div>
+                    <div>
+                      <p style={{color:"#6B7280",fontSize:"10px"}}>Now</p>
+                      <p style={{color:"#E5E7EB",fontSize:"13px",fontWeight:600,fontFamily:"monospace"}}>
+                        {h.current !== null ? fmt(h.current) : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p style={{color:"#6B7280",fontSize:"10px"}}>P / L</p>
+                      <p style={{color: h.pl===null ? "#6B7280" : up ? "#34D399" : "#F87171", fontSize:"13px",fontWeight:700,fontFamily:"monospace"}}>
+                        {h.pl===null ? "—" : `${up?"+":""}${fmt(h.pl)}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {h.plPct !== null && (
+                    <div className="flex items-center justify-between" style={{marginTop:"6px"}}>
+                      <p style={{color:"#6B7280",fontSize:"10px",fontFamily:"monospace"}}>
+                        Buy ₹{Number(h.buyPrice).toLocaleString("en-IN")} · Now ₹{h.livePrice ? Number(h.livePrice).toLocaleString("en-IN",{maximumFractionDigits:2}) : "—"}
+                      </p>
+                      <span style={{color: up ? "#34D399" : "#F87171",fontSize:"12px",fontWeight:700}}>
+                        {up?"▲ +":"▼ "}{Math.abs(h.plPct).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <p style={{color:"#4B5563",fontSize:"10px",textAlign:"center",marginTop:"16px",lineHeight:1.5}}>
+            Prices from CoinGecko, cached and refreshed periodically to stay free.<br/>Not financial advice — values are approximate.
+          </p>
+        </>)}
+      </div>
+    );
+  }
+
   export default function Investments({firestoreData, user, quickAddTrigger}){
     const [activeMonth, setActiveMonth] = useState(null);
     const [panelOpen,   setPanelOpen]   = useState(false);
@@ -532,11 +757,13 @@
     const [presetType,      setPresetType]      = useState(null);
     const [presetCustomTagId, setPresetCustomTagId] = useState(null); // ✨ NEW #2: tag entry into custom cat
     const [pickExistingOpen, setPickExistingOpen] = useState(false);  // ✨ NEW #3
+    const [showHoldings, setShowHoldings] = useState(false);          // ✨ NEW v1.9
     const [vis,         setVis]         = useState(false);
 
     useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
 
-    const {investments=[], categories=[], customCategories=[], learnedCategories={}, addEntry, deleteEntry, learnCategory, loading=false} = firestoreData||{};
+    const {investments=[], categories=[], customCategories=[], learnedCategories={}, addEntry, deleteEntry, learnCategory, loading=false,
+           cryptoPrices={}, pricesUpdatedAt=null, pricesLoading=false, refreshCryptoPrices} = firestoreData||{};
     const uid = user?.uid;
 
     // ✨ Drill-down state for global + button (window event)
@@ -654,6 +881,24 @@
       </>
     );
 
+    // ✨ NEW v1.9: Holdings view
+    if (showHoldings) {
+      return (
+        <>
+          <HoldingsView
+            investments={investments}
+            cryptoPrices={cryptoPrices}
+            pricesUpdatedAt={pricesUpdatedAt}
+            pricesLoading={pricesLoading}
+            onRefresh={()=>refreshCryptoPrices && refreshCryptoPrices()}
+            onBack={()=>setShowHoldings(false)}
+            onEdit={(entry)=>{ setShowHoldings(false); openEdit(entry); }}
+          />
+          {sharedPanels}
+        </>
+      );
+    }
+
     // Drill-down for normal types
     if (activeType) {
       const typeEntries = investments.filter(e => (e.type || "Other") === activeType.name);
@@ -709,11 +954,18 @@
                 {year} · Total: <span style={{color:"#34D399",fontWeight:600}}>{fmt(totalAll)}</span>
               </p>
             </div>
-            <button onClick={()=>setManageTypes(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
-              style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34D399",cursor:"pointer",fontFamily:"inherit"}}>
-              📊 Types
-            </button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={()=>setShowHoldings(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+                style={{background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.2)",color:"#FBBF24",cursor:"pointer",fontFamily:"inherit"}}>
+                📊 Holdings
+              </button>
+              <button onClick={()=>setManageTypes(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+                style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34D399",cursor:"pointer",fontFamily:"inherit"}}>
+                📊 Types
+              </button>
+            </div>
           </div>
 
           <div className="p-4 mb-5 flex justify-between items-center" style={{...card}}>

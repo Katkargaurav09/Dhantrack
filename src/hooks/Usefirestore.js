@@ -2,9 +2,30 @@ import { useState, useEffect, useCallback } from "react";
 import {
   collection, addDoc, deleteDoc, doc,
   onSnapshot, query, orderBy, serverTimestamp,
-  setDoc,
+  setDoc, getDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
+
+// ✨ v1.9: Crypto coins we support for live prices (CoinGecko IDs)
+export const CRYPTO_COINS = [
+  { id: "bitcoin",      symbol: "BTC",  name: "Bitcoin" },
+  { id: "ethereum",     symbol: "ETH",  name: "Ethereum" },
+  { id: "solana",       symbol: "SOL",  name: "Solana" },
+  { id: "ronin",        symbol: "RON",  name: "Ronin" },
+  { id: "binancecoin",  symbol: "BNB",  name: "BNB" },
+  { id: "cardano",      symbol: "ADA",  name: "Cardano" },
+  { id: "dogecoin",     symbol: "DOGE", name: "Dogecoin" },
+  { id: "matic-network",symbol: "POL",  name: "Polygon" },
+  { id: "polkadot",     symbol: "DOT",  name: "Polkadot" },
+  { id: "avalanche-2",  symbol: "AVAX", name: "Avalanche" },
+  { id: "chainlink",    symbol: "LINK", name: "Chainlink" },
+  { id: "tron",         symbol: "TRX",  name: "Tron" },
+  { id: "ripple",       symbol: "XRP",  name: "Ripple" },
+  { id: "litecoin",     symbol: "LTC",  name: "Litecoin" },
+  { id: "shiba-inu",    symbol: "SHIB", name: "Shiba Inu" },
+];
+
+const PRICE_CACHE_HOURS = 6; // refetch only if cache older than this
 
 export default function useFirestore(uid) {
   const [investments,      setInvestments]      = useState([]);
@@ -15,6 +36,9 @@ export default function useFirestore(uid) {
   const [learnedCategories,setLearnedCategories]= useState({});     // ✨ NEW v1.5 (auto-categorize)
   const [scoreHistory,     setScoreHistory]     = useState([]);     // ✨ NEW v1.7 monthly score snapshots
   const [pools,            setPools]            = useState([]);
+  const [cryptoPrices,     setCryptoPrices]     = useState({});     // ✨ NEW v1.9 { coinId: priceINR }
+  const [pricesUpdatedAt,  setPricesUpdatedAt]  = useState(null);   // ✨ NEW v1.9
+  const [pricesLoading,    setPricesLoading]    = useState(false);  // ✨ NEW v1.9
   const [loading,          setLoading]          = useState(true);
 
   // ─── Investments listener ───
@@ -117,19 +141,84 @@ export default function useFirestore(uid) {
     return () => unsub();
   }, [uid]);
 
+  // ✨ NEW v1.9: Fetch fresh prices from CoinGecko and save to shared cache
+  const fetchAndCachePrices = useCallback(async () => {
+    setPricesLoading(true);
+    try {
+      const ids = CRYPTO_COINS.map(c => c.id).join(",");
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=inr`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("CoinGecko " + res.status);
+      const data = await res.json();
+      // data looks like { bitcoin: { inr: 5300000 }, ... } -> flatten to { bitcoin: 5300000 }
+      const flat = {};
+      Object.keys(data).forEach(coinId => {
+        if (data[coinId] && typeof data[coinId].inr === "number") flat[coinId] = data[coinId].inr;
+      });
+      const nowIso = new Date().toISOString();
+      setCryptoPrices(flat);
+      setPricesUpdatedAt(nowIso);
+      // Save to shared cache so other users/devices reuse it (keeps API calls low)
+      try {
+        await setDoc(doc(db, "appData", "cryptoPrices"), { prices: flat, updatedAt: nowIso }, { merge: true });
+      } catch (e) { console.error("Price cache save error:", e.message); }
+      return flat;
+    } catch (e) {
+      console.error("Fetch prices error:", e.message);
+      return null;
+    } finally {
+      setPricesLoading(false);
+    }
+  }, []);
+
+  // ✨ NEW v1.9: On load, read shared cache; only refetch if stale
+  useEffect(() => {
+    if (!uid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "appData", "cryptoPrices"));
+        if (cancelled) return;
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.prices) setCryptoPrices(d.prices);
+          if (d.updatedAt) setPricesUpdatedAt(d.updatedAt);
+          const ageMs = d.updatedAt ? (Date.now() - new Date(d.updatedAt).getTime()) : Infinity;
+          if (ageMs > PRICE_CACHE_HOURS * 3600 * 1000) {
+            fetchAndCachePrices(); // stale -> refresh in background
+          }
+        } else {
+          fetchAndCachePrices(); // no cache yet -> first fetch
+        }
+      } catch (e) {
+        console.error("Price cache read error:", e.message);
+        fetchAndCachePrices();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [uid, fetchAndCachePrices]);
+
   // ─── Add Entry ───
   const addEntry = useCallback(async (kind, entry) => {
     if (!uid) throw new Error("Not logged in");
     if (!entry.name || !entry.amount || !entry.date) throw new Error("Missing fields");
-    await addDoc(collection(db, "users", uid, kind), {
+    const payload = {
       name:       entry.name,
       amount:     Number(entry.amount),
       date:       entry.date,
       type:       entry.type || "Other",
       note:       entry.note || "",
-      customTags: entry.customTags || [],   // ✨ NEW: link to customCategories
+      customTags: entry.customTags || [],   // ✨ link to customCategories
       createdAt:  serverTimestamp(),
-    });
+    };
+    // ✨ NEW v1.9: carry live-price fields if present (crypto holdings)
+    if (entry.liveTrack) {
+      payload.liveTrack  = true;
+      payload.coinId     = entry.coinId || null;
+      payload.coinSymbol = entry.coinSymbol || null;
+      payload.buyPrice   = Number(entry.buyPrice) || 0;
+    }
+    await addDoc(collection(db, "users", uid, kind), payload);
   }, [uid]);
 
   // ─── Delete Entry ───
@@ -179,8 +268,6 @@ export default function useFirestore(uid) {
   const totalIncome   = incomes.reduce((s, e) => s + (Number(e.amount) || 0), 0);   // ✨ NEW v1.6
 
   // ✨ v1.8: Net Savings = Income − Spent (true savings) once income is logged.
-  // Falls back to Invested − Spent for users who haven't logged any income yet,
-  // so they never see a fake "deficit".
   const hasIncome  = totalIncome > 0;
   const netBalance = hasIncome ? (totalIncome - totalSpent) : (totalInvested - totalSpent);
 
@@ -193,6 +280,10 @@ export default function useFirestore(uid) {
     learnedCategories,         // ✨ NEW v1.5
     scoreHistory,              // ✨ NEW v1.7
     pools,
+    cryptoPrices,              // ✨ NEW v1.9 { coinId: priceINR }
+    pricesUpdatedAt,           // ✨ NEW v1.9
+    pricesLoading,             // ✨ NEW v1.9
+    refreshCryptoPrices: fetchAndCachePrices, // ✨ NEW v1.9 manual refresh
     loading,
     addEntry,
     deleteEntry,
