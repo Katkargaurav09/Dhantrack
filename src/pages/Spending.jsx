@@ -402,6 +402,125 @@ function PickExistingPanel({ open, onClose, uid, spendings, customCat }) {
   );
 }
 
+// ✨ NEW v1.8: Cash Mode — fast 3-tap entry for small cash spends
+function CashModePanel({ open, onClose, onSave }) {
+  const CHIPS = [10, 20, 50, 100, 200, 500];
+  const QUICK_CATS = ["Food","Travel","Shopping","Fuel","Health","Other"];
+  const [amount, setAmount]   = useState("");
+  const [custom, setCustom]   = useState(false);
+  const [cat,    setCat]      = useState("Food");
+  const [saving, setSaving]   = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    if (open) { setAmount(""); setCustom(false); setCat("Food"); setSaving(false); setJustSaved(false); }
+  }, [open]);
+
+  async function quickSave() {
+    if (!amount || parseFloat(amount) <= 0) return alert("Pick or enter an amount");
+    setSaving(true);
+    try {
+      await onSave({
+        name: cat,                       // simple name = category (cash entries are quick)
+        amount: parseFloat(amount),
+        date: new Date().toISOString().split("T")[0],
+        type: cat,
+        note: "Cash",
+        cash: true,                      // ✨ tag as cash for later reporting
+      });
+      // show quick confirmation, reset amount, keep panel open for rapid entry
+      setJustSaved(true);
+      setAmount(""); setCustom(false);
+      setTimeout(() => setJustSaved(false), 1200);
+    } catch (e) { alert("Failed: " + e.message); }
+    setSaving(false);
+  }
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/60" style={{zIndex:80}} onClick={onClose}/>
+      <div className="fixed bottom-0 left-0 right-0 rounded-t-3xl"
+        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"90vh",overflowY:"auto",zIndex:90}}>
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
+        <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+          <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
+          <h3 className="font-bold text-white text-base">⚡ Cash Mode</h3>
+          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold"
+            style={{background:"rgba(52,211,153,0.15)",color:"#34D399",border:"1px solid rgba(52,211,153,0.2)"}}>
+            Fast entry
+          </span>
+        </div>
+
+        <div className="px-5 pt-4 pb-6">
+          {/* amount display */}
+          <div style={{textAlign:"center",marginBottom:"14px"}}>
+            <p style={{color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em"}}>Amount</p>
+            <p style={{color: amount ? "#F87171" : "#4B5563",fontSize:"38px",fontWeight:800,lineHeight:1.1}}>
+              ₹{amount || "0"}
+            </p>
+          </div>
+
+          {/* amount chips */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"10px"}}>
+            {CHIPS.map(c=>(
+              <button key={c} onClick={()=>{setAmount(String(c));setCustom(false);}}
+                style={{
+                  padding:"14px",borderRadius:"12px",cursor:"pointer",fontFamily:"inherit",fontSize:"16px",fontWeight:700,
+                  background: amount===String(c)&&!custom ? "rgba(248,113,113,0.18)" : "rgba(255,255,255,0.04)",
+                  border: amount===String(c)&&!custom ? "1px solid rgba(248,113,113,0.45)" : "1px solid rgba(255,255,255,0.08)",
+                  color: amount===String(c)&&!custom ? "#F87171" : "#E5E7EB",
+                }}>₹{c}</button>
+            ))}
+          </div>
+
+          {/* custom amount */}
+          <button onClick={()=>{setCustom(true);setAmount("");}}
+            style={{width:"100%",padding:"10px",marginBottom:"10px",borderRadius:"12px",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600,
+              background: custom ? "rgba(248,113,113,0.12)" : "rgba(255,255,255,0.03)",
+              border: custom ? "1px solid rgba(248,113,113,0.35)" : "1px dashed rgba(255,255,255,0.12)",
+              color: custom ? "#F87171" : "#9CA3AF"}}>
+            ✏️ Custom amount
+          </button>
+          {custom && (
+            <input type="number" autoFocus value={amount} onChange={e=>setAmount(e.target.value)} placeholder="Enter amount"
+              style={{...inp, marginBottom:"12px", textAlign:"center", fontSize:"18px", fontWeight:700}}/>
+          )}
+
+          {/* category icons */}
+          <p style={{color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"8px"}}>Category</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"8px",marginBottom:"18px"}}>
+            {QUICK_CATS.map(c=>(
+              <button key={c} onClick={()=>setCat(c)}
+                style={{
+                  padding:"12px 6px",borderRadius:"12px",cursor:"pointer",fontFamily:"inherit",
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:"4px",
+                  background: cat===c ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
+                  border: cat===c ? "1px solid rgba(52,211,153,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                }}>
+                <span style={{fontSize:"22px"}}>{ICONS[c]||"💡"}</span>
+                <span style={{fontSize:"11px",fontWeight:600,color: cat===c ? "#34D399" : "#9CA3AF"}}>{c}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* save */}
+          <button onClick={quickSave} disabled={saving}
+            style={{width:"100%",padding:"15px",borderRadius:"14px",border:"none",cursor:saving?"not-allowed":"pointer",fontFamily:"inherit",fontSize:"15px",fontWeight:800,
+              background: justSaved ? "linear-gradient(135deg,#34D399,#059669)" : "linear-gradient(135deg,#F87171,#ef4444)",
+              color:"#fff"}}>
+            {justSaved ? "✓ Saved! Add another" : saving ? "Saving..." : `Save ₹${amount||"0"} · ${cat}`}
+          </button>
+          <p style={{color:"#4B5563",fontSize:"10px",textAlign:"center",marginTop:"10px",lineHeight:1.5}}>
+            Quick entries are dated today & tagged "Cash". You can edit details later from the month view.
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function MonthCard({mk,entries,onClick,iconMap}){
   const[,m]=mk.split("-");const total=entries.reduce((s,e)=>s+e.amount,0);const has=entries.length>0;
   return(
@@ -522,6 +641,7 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
   const [presetType,     setPresetType]     = useState(null);
   const [presetCustomTagId, setPresetCustomTagId] = useState(null); // ✨ NEW #2
   const [pickExistingOpen, setPickExistingOpen] = useState(false);  // ✨ NEW #3
+  const [cashMode,       setCashMode]       = useState(false);      // ✨ NEW v1.8
   const [vis,            setVis]            = useState(false);
 
   useEffect(()=>{setTimeout(()=>setVis(true),40);},[]);
@@ -573,7 +693,7 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
       setPanelOpen(false); setManageCats(false); setEditEntry(null);
       setActiveCategory(null); setShowCustomPanel(false); setEditCustomCat(null);
       setActiveCustom(null); setPresetType(null); setPresetCustomTagId(null);
-      setPickExistingOpen(false);
+      setPickExistingOpen(false); setCashMode(false);
     };
   }, []);
 
@@ -640,6 +760,7 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
       {manageCats && <ManageCatsPanel open={manageCats} onClose={()=>setManageCats(false)} uid={uid} customCats={categories}/>}
       {showCustomPanel && <CustomCategoryPanel open={showCustomPanel} onClose={()=>{setShowCustomPanel(false); setEditCustomCat(null);}} uid={uid} kind="spending" spendings={spendings} editCategory={editCustomCat}/>}
       {pickExistingOpen && activeCustom && <PickExistingPanel open={pickExistingOpen} onClose={()=>setPickExistingOpen(false)} uid={uid} spendings={spendings} customCat={activeCustom}/>}
+      {cashMode && <CashModePanel open={cashMode} onClose={()=>setCashMode(false)} onSave={handleAdd}/>}
     </>
   );
 
@@ -697,11 +818,18 @@ export default function Spending({firestoreData, user, quickAddTrigger}){
               {year} · Total: <span style={{color:"#F87171",fontWeight:600}}>{fmt(totalAll)}</span>
             </p>
           </div>
-          <button onClick={()=>setManageCats(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
-            style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",color:"#F87171",cursor:"pointer",fontFamily:"inherit"}}>
-            🏷️ Categories
-          </button>
+          <div style={{display:"flex",gap:"8px"}}>
+            <button onClick={()=>setCashMode(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+              style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34D399",cursor:"pointer",fontFamily:"inherit"}}>
+              ⚡ Cash
+            </button>
+            <button onClick={()=>setManageCats(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold"
+              style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",color:"#F87171",cursor:"pointer",fontFamily:"inherit"}}>
+              🏷️ Categories
+            </button>
+          </div>
         </div>
 
         <div className="p-4 mb-5 flex justify-between items-center" style={{...card}}>

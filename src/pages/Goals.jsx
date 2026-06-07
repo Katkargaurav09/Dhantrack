@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { db } from "../firebase/config";
 import {
   collection, addDoc, deleteDoc, doc, updateDoc,
-  onSnapshot, serverTimestamp,
+  onSnapshot, serverTimestamp, setDoc, getDoc,
 } from "firebase/firestore";
 
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 }); }
@@ -406,6 +406,74 @@ function PoolCard({ pool, spendings, onDelete }) {
   );
 }
 
+// ✨ NEW v1.8: Emergency Fund setup panel
+function EmergencyPanel({ open, onClose, onSave, current }) {
+  const [fund,   setFund]   = useState("");
+  const [months, setMonths] = useState(6);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setFund(current?.fund != null ? String(current.fund) : "");
+      setMonths(current?.targetMonths || 6);
+    }
+  }, [open, current]);
+
+  async function save() {
+    if (fund === "" || isNaN(fund) || parseFloat(fund) < 0) return alert("Enter your current emergency fund amount");
+    setSaving(true);
+    try {
+      await onSave({ fund: parseFloat(fund), targetMonths: months });
+      onClose();
+    } catch (e) { alert("Failed: " + e.message); }
+    setSaving(false);
+  }
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose}/>
+      <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl"
+        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"85vh",overflowY:"auto"}}>
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
+        <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
+          <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
+          <h3 style={{color:"white",fontWeight:"700",fontSize:"16px"}}>🛡️ Emergency Fund</h3>
+          <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold" style={{background:"rgba(96,165,250,0.15)",color:"#60A5FA",border:"1px solid rgba(96,165,250,0.2)"}}>Safety</span>
+        </div>
+        <div className="px-5 pt-4 pb-4 space-y-4">
+          <div>
+            <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Current Emergency Fund (₹)</label>
+            <input type="number" value={fund} onChange={e=>setFund(e.target.value)} placeholder="e.g. 100000" style={inp}/>
+            <p style={{color:"#4B5563",fontSize:"11px",marginTop:"5px",lineHeight:1.4}}>How much you've set aside for emergencies (savings, FD, liquid funds).</p>
+          </div>
+          <div>
+            <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Target (months of expenses)</label>
+            <div style={{display:"flex",gap:"8px"}}>
+              {[3,6,12].map(m=>(
+                <button key={m} onClick={()=>setMonths(m)} style={{
+                  flex:1,padding:"12px",borderRadius:"10px",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600,
+                  background: months===m ? "rgba(96,165,250,0.15)" : "rgba(255,255,255,0.04)",
+                  border: months===m ? "1px solid rgba(96,165,250,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                  color: months===m ? "#60A5FA" : "#9CA3AF",
+                }}>{m} months</button>
+              ))}
+            </div>
+            <p style={{color:"#4B5563",fontSize:"11px",marginTop:"6px",lineHeight:1.4}}>💡 6 months is the recommended safety buffer for India.</p>
+          </div>
+        </div>
+        <div className="flex gap-3 px-5 pb-8">
+          <button onClick={onClose} style={{flex:1,padding:"13px",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"12px",color:"#6B7280",fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{flex:1,padding:"13px",background:saving?"rgba(96,165,250,0.4)":"linear-gradient(135deg,#60A5FA,#2563EB)",border:"none",borderRadius:"12px",color:"#fff",fontWeight:"700",fontSize:"14px",cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {saving?"Saving...":"Save"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function Goals({ firestoreData, user }) {
   const [tab,         setTab]         = useState("budget");
   const [budgets,     setBudgets]     = useState([]);
@@ -414,6 +482,8 @@ export default function Goals({ firestoreData, user }) {
   const [showSavings, setShowSavings] = useState(false);
   const [showPool,    setShowPool]    = useState(false); // ✨ NEW
   const [updateGoal,  setUpdateGoal]  = useState(null);
+  const [showEmergency, setShowEmergency] = useState(false); // ✨ NEW v1.8
+  const [emergency,     setEmergency]     = useState(null);  // ✨ NEW v1.8 {fund, targetMonths}
   const [vis,         setVis]         = useState(false);
 
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
@@ -441,6 +511,16 @@ export default function Goals({ firestoreData, user }) {
     return () => unsub();
   }, [uid]);
 
+  // ✨ NEW v1.8: Emergency fund listener (single doc)
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(doc(db, "users", uid, "settings", "emergencyFund"),
+      snap => setEmergency(snap.exists() ? snap.data() : null),
+      err  => console.error(err)
+    );
+    return () => unsub();
+  }, [uid]);
+
   // ✨ Close panels when leaving this page
   useEffect(() => {
     return () => {
@@ -448,6 +528,7 @@ export default function Goals({ firestoreData, user }) {
       setShowSavings(false);
       setShowPool(false);
       setUpdateGoal(null);
+      setShowEmergency(false);
     };
   }, []);
 
@@ -482,8 +563,33 @@ export default function Goals({ firestoreData, user }) {
     await deleteDoc(doc(db, "users", uid, "pools", id));
   }, [uid]);
 
+  // ✨ NEW v1.8: Save emergency fund settings
+  const saveEmergency = useCallback(async (data) => {
+    await setDoc(doc(db, "users", uid, "settings", "emergencyFund"), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+  }, [uid]);
+
   const cm = mkey(new Date().toISOString());
   const monthSpendings = spendings.filter(e => mkey(e.date) === cm);
+
+  // ✨ NEW v1.8: Emergency fund math — avg monthly expense from last 3 completed months
+  const emMonths = [...new Set(spendings.map(e => mkey(e.date)))].sort((a,b)=>b<a?-1:1);
+  const last3 = emMonths.filter(m => m !== cm).slice(0, 3); // skip current (incomplete) month
+  const last3Totals = last3.map(m => spendings.filter(e => mkey(e.date) === m).reduce((s,e)=>s+Number(e.amount),0));
+  const avgMonthlyExpense = last3Totals.length > 0
+    ? Math.round(last3Totals.reduce((s,v)=>s+v,0) / last3Totals.length)
+    : 0;
+  const emFund    = emergency?.fund || 0;
+  const emTargetM = emergency?.targetMonths || 6;
+  const emTarget  = avgMonthlyExpense * emTargetM;
+  const emMonthsCovered = avgMonthlyExpense > 0 ? (emFund / avgMonthlyExpense) : 0;
+  const emPct     = emTarget > 0 ? Math.min(100, Math.round((emFund / emTarget) * 100)) : 0;
+  const emGap     = Math.max(0, emTarget - emFund);
+  // status
+  let emStatus = { label: "Building", color: "#FBBF24", emoji: "🟡" };
+  if (emMonthsCovered >= emTargetM)      emStatus = { label: "Excellent", color: "#34D399", emoji: "🟢" };
+  else if (emMonthsCovered >= 3)         emStatus = { label: "Good", color: "#34D399", emoji: "🟢" };
+  else if (emMonthsCovered >= 1)         emStatus = { label: "Building", color: "#FBBF24", emoji: "🟡" };
+  else                                   emStatus = { label: "Critical", color: "#F87171", emoji: "🔴" };
 
   // Sort pools: active first, then by start date
   const sortedPools = [...pools].sort((a, b) => {
@@ -508,6 +614,7 @@ export default function Goals({ firestoreData, user }) {
           if (tab==="budget") setShowBudget(true);
           else if (tab==="savings") setShowSavings(true);
           else if (tab==="pool") setShowPool(true);
+          else if (tab==="emergency") setShowEmergency(true);
         }}
           className="flex items-center justify-center rounded-full transition-all hover:scale-110"
           style={{
@@ -532,6 +639,7 @@ export default function Goals({ firestoreData, user }) {
           ["budget","🎯 Budget","#FBBF24","251,191,36"],
           ["savings","💰 Savings","#34D399","52,211,153"],
           ["pool","💸 Pool","#8B5CF6","139,92,246"],
+          ["emergency","🛡️ Emergency","#60A5FA","96,165,250"],
         ].map(([id,label,color,rgb])=>(
           <button key={id} onClick={()=>setTab(id)}
             className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
@@ -683,10 +791,88 @@ export default function Goals({ firestoreData, user }) {
       )}
 
       {/* Modals — conditional render (fixes ghost panel) */}
+      {/* ══ ✨ NEW v1.8: EMERGENCY TAB ══ */}
+      {tab === "emergency" && (
+        <>
+          {!emergency ? (
+            <div style={{...card,textAlign:"center",padding:"48px 20px",color:"#4B5563"}}>
+              <p style={{fontSize:"40px",marginBottom:"10px"}}>🛡️</p>
+              <p style={{fontSize:"15px",color:"#E5E7EB",fontWeight:"600",marginBottom:"6px"}}>Set Up Emergency Fund</p>
+              <p style={{fontSize:"13px",lineHeight:1.5}}>Track how many months of expenses<br/>you have saved for emergencies</p>
+              <button onClick={()=>setShowEmergency(true)} style={{marginTop:"16px",padding:"10px 24px",background:"linear-gradient(135deg,#60A5FA,#2563EB)",border:"none",borderRadius:"10px",color:"#fff",fontWeight:"700",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>
+                + Set Up Now
+              </button>
+            </div>
+          ) : avgMonthlyExpense === 0 ? (
+            <div style={{...card,padding:"24px",textAlign:"center"}}>
+              <p style={{fontSize:"32px",marginBottom:"10px"}}>📊</p>
+              <p style={{color:"#E5E7EB",fontSize:"14px",fontWeight:600,marginBottom:"6px"}}>Need spending data first</p>
+              <p style={{color:"#9CA3AF",fontSize:"12px",lineHeight:1.5}}>Add some spending entries so we can work out your average monthly expense. Then your emergency buffer (in months) will show here.</p>
+              <button onClick={()=>setShowEmergency(true)} style={{marginTop:"14px",padding:"8px 18px",background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:"10px",color:"#60A5FA",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                Edit Fund
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Main gauge card */}
+              <div className="p-6 mb-4 relative overflow-hidden" style={{...card,border:`1px solid ${emStatus.color}25`}}>
+                <div style={{position:"absolute",top:"-50px",right:"-50px",width:"180px",height:"180px",borderRadius:"50%",background:`radial-gradient(circle,${emStatus.color}18,transparent 70%)`,pointerEvents:"none"}}/>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-mono uppercase tracking-widest" style={{color:"#6B7280"}}>Emergency Buffer</p>
+                  <span style={{padding:"3px 10px",borderRadius:"99px",background:`${emStatus.color}18`,border:`1px solid ${emStatus.color}40`,color:emStatus.color,fontSize:"11px",fontWeight:700}}>
+                    {emStatus.emoji} {emStatus.label}
+                  </span>
+                </div>
+                <p className="text-4xl font-bold mb-1" style={{color:emStatus.color}}>
+                  {emMonthsCovered.toFixed(1)} <span style={{fontSize:"18px",color:"#6B7280"}}>/ {emTargetM} months</span>
+                </p>
+                <div style={{height:"10px",background:"rgba(255,255,255,0.06)",borderRadius:"99px",overflow:"hidden",margin:"14px 0 6px"}}>
+                  <div style={{height:"100%",width:`${emPct}%`,background:emStatus.color,borderRadius:"99px",transition:"width .6s ease"}}/>
+                </div>
+                <p className="text-xs" style={{color:"#6B7280"}}>{emPct}% of your {emTargetM}-month target</p>
+              </div>
+
+              {/* Breakdown */}
+              <div style={{...card,padding:"18px",marginBottom:"16px"}} className="space-y-3">
+                {[
+                  ["Monthly expense (avg)", fmt(avgMonthlyExpense), "#9CA3AF"],
+                  ["Current fund", fmt(emFund), "#60A5FA"],
+                  ["Target", fmt(emTarget), "#E5E7EB"],
+                  ["Gap to target", emGap > 0 ? fmt(emGap) : "Reached! 🎉", emGap > 0 ? "#F87171" : "#34D399"],
+                ].map(([label,val,col])=>(
+                  <div key={label} className="flex justify-between items-center">
+                    <span className="text-sm" style={{color:"#9CA3AF"}}>{label}</span>
+                    <span className="text-sm font-bold font-mono" style={{color:col}}>{val}</span>
+                  </div>
+                ))}
+                <p style={{color:"#4B5563",fontSize:"10px",lineHeight:1.5,paddingTop:"4px"}}>
+                  Monthly expense is your average spending over the last {last3.length || 0} completed {last3.length===1?"month":"months"}.
+                </p>
+              </div>
+
+              {/* Suggestion */}
+              {emGap > 0 && (
+                <div className="p-4 mb-4" style={{...card,border:"1px solid rgba(96,165,250,0.15)"}}>
+                  <p style={{color:"#60A5FA",fontSize:"13px",fontWeight:600,lineHeight:1.5}}>
+                    💡 Save {fmt(Math.ceil(emGap / 12))} per month to reach your {emTargetM}-month goal in about a year.
+                  </p>
+                </div>
+              )}
+
+              <button onClick={()=>setShowEmergency(true)} style={{width:"100%",padding:"13px",background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:"12px",color:"#60A5FA",fontWeight:700,fontSize:"14px",cursor:"pointer",fontFamily:"inherit"}}>
+                ✏️ Update Fund Amount
+              </button>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Modals — conditional render (fixes ghost panel) */}
       {showBudget  && <AddBudgetPanel   open={showBudget}  onClose={()=>setShowBudget(false)}  onSave={addBudget}/>}
       {showSavings && <AddSavingsPanel  open={showSavings} onClose={()=>setShowSavings(false)} onSave={addSavingsGoal}/>}
       {showPool    && <CreatePoolPanel  open={showPool}    onClose={()=>setShowPool(false)}    onSave={addPool}    allCategories={categories}/>}
       {updateGoal  && <UpdateSavedPanel open={!!updateGoal} goal={updateGoal} onClose={()=>setUpdateGoal(null)} onUpdate={updateSaved}/>}
+      {showEmergency && <EmergencyPanel open={showEmergency} onClose={()=>setShowEmergency(false)} onSave={saveEmergency} current={emergency}/>}
     </div>
   );
 }

@@ -217,6 +217,7 @@ export default function useFirestore(uid) {
       payload.coinId     = entry.coinId || null;
       payload.coinSymbol = entry.coinSymbol || null;
       payload.buyPrice   = Number(entry.buyPrice) || 0;
+      payload.quantity   = Number(entry.quantity) || 0;
     }
     await addDoc(collection(db, "users", uid, kind), payload);
   }, [uid]);

@@ -165,6 +165,7 @@
     const [liveTrack, setLiveTrack] = useState(false);
     const [coinId,    setCoinId]    = useState("bitcoin");
     const [buyPrice,  setBuyPrice]  = useState("");
+    const [quantity,  setQuantity]  = useState("");
 
     useEffect(() => {
       if (!open) return;
@@ -176,6 +177,7 @@
         setLiveTrack(!!editEntry.liveTrack);
         setCoinId(editEntry.coinId || "bitcoin");
         setBuyPrice(editEntry.buyPrice ? String(editEntry.buyPrice) : "");
+        setQuantity(editEntry.quantity ? String(editEntry.quantity) : "");
       } else {
         setName(""); setAmount(""); setNote("");
         setType(presetType || "Stock");
@@ -184,11 +186,20 @@
         setLiveTrack(false);
         setCoinId("bitcoin");
         setBuyPrice("");
+        setQuantity("");
       }
       setSuggestion(null);
       setUserPickedManually(false);
       setSaving(false);
     }, [open, isEdit, editEntry?.id, presetType]);
+
+    // ✨ v1.9: when live tracking on, Amount = quantity × buy price (auto)
+    useEffect(() => {
+      if (liveTrack && type === "Crypto" && quantity && buyPrice) {
+        const calc = parseFloat(quantity) * parseFloat(buyPrice);
+        if (!isNaN(calc) && calc > 0) setAmount(String(Math.round(calc)));
+      }
+    }, [liveTrack, type, quantity, buyPrice]);
 
     useEffect(() => {
       if (!name.trim() || name.length < 2 || isEdit) { setSuggestion(null); return; }
@@ -206,8 +217,9 @@
 
     async function save() {
       if (!name.trim() || !amount || !date) return alert("Fill all fields");
-      // ✨ v1.9 if live tracking on, need a buy price
+      // ✨ v1.9 if live tracking on, need quantity + buy price
       const wantLive = liveTrack && type === "Crypto";
+      if (wantLive && (!quantity || parseFloat(quantity) <= 0)) return alert("Enter the quantity (how many coins)");
       if (wantLive && (!buyPrice || parseFloat(buyPrice) <= 0)) return alert("Enter the buy price per coin");
       const coin = CRYPTO_COINS.find(c => c.id === coinId);
       setSaving(true);
@@ -222,6 +234,7 @@
             upd.coinId = coinId;
             upd.coinSymbol = coin ? coin.symbol : null;
             upd.buyPrice = parseFloat(buyPrice);
+            upd.quantity = parseFloat(quantity);
           } else {
             upd.liveTrack = false;
           }
@@ -236,6 +249,7 @@
             entryData.coinId = coinId;
             entryData.coinSymbol = coin ? coin.symbol : null;
             entryData.buyPrice = parseFloat(buyPrice);
+            entryData.quantity = parseFloat(quantity);
           }
           await onSave(entryData);
 
@@ -343,15 +357,21 @@
                       </select>
                     </div>
                     <div>
+                      <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Quantity (how many coins)</label>
+                      <input type="number" value={quantity} onChange={e=>setQuantity(e.target.value)} placeholder="e.g. 0.5" style={inp}/>
+                    </div>
+                    <div>
                       <label className="text-xs uppercase tracking-wider block mb-1.5" style={{color:"#6B7280"}}>Buy price per coin (₹)</label>
                       <input type="number" value={buyPrice} onChange={e=>setBuyPrice(e.target.value)} placeholder="e.g. 5000000" style={inp}/>
-                      {amount && buyPrice && parseFloat(buyPrice) > 0 && (
-                        <p style={{color:"#34D399",fontSize:"11px",marginTop:"6px"}}>
-                          ≈ {(parseFloat(amount)/parseFloat(buyPrice)).toLocaleString("en-IN",{maximumFractionDigits:8})} coins
-                          <span style={{color:"#6B7280"}}> (from amount ÷ buy price)</span>
-                        </p>
-                      )}
                     </div>
+                    {quantity && buyPrice && parseFloat(quantity) > 0 && parseFloat(buyPrice) > 0 && (
+                      <div style={{padding:"10px 12px",background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.18)",borderRadius:"10px"}}>
+                        <p style={{color:"#34D399",fontSize:"12px",fontWeight:600}}>
+                          Invested: {fmt(parseFloat(quantity) * parseFloat(buyPrice))}
+                        </p>
+                        <p style={{color:"#6B7280",fontSize:"10px",marginTop:"2px"}}>Amount auto-fills from quantity × buy price</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -609,7 +629,8 @@
     const holdings = investments
       .filter(e => e.liveTrack && e.coinId && e.buyPrice > 0 && e.amount > 0)
       .map(e => {
-        const qty       = Number(e.amount) / Number(e.buyPrice);   // coins bought
+        // ✨ use stored quantity; fall back to amount ÷ buyPrice for entries saved before quantity existed
+        const qty       = Number(e.quantity) > 0 ? Number(e.quantity) : (Number(e.amount) / Number(e.buyPrice));
         const livePrice = cryptoPrices[e.coinId] || null;
         const invested  = Number(e.amount);
         const current   = livePrice ? qty * livePrice : null;

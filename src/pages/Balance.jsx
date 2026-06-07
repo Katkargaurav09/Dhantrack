@@ -480,6 +480,61 @@ export default function Balance({ firestoreData }) {
   if (cmIncTotal > 0 && (cmIncTotal - cmSpeTotal) / cmIncTotal < 0.2 && cmSpeTotal <= cmIncTotal) suggestions.push("Try to save at least 20% of your income.");
   if (suggestions.length === 0) suggestions.push("You're doing well this month — keep it up! 🎯");
 
+  // ✨ NEW v1.8: Smart Insights — specific, actionable, yearly-framed
+  const smartInsights = [];
+  // average monthly spend over completed months (for comparison)
+  const completedMonthsForAvg = monthStats.filter(m => m.mk !== cm);
+  const avgMonthlySpend = completedMonthsForAvg.length > 0
+    ? Math.round(completedMonthsForAvg.reduce((s,m)=>s+m.spe,0) / completedMonthsForAvg.length)
+    : 0;
+
+  // 1. Spending vs your average
+  if (avgMonthlySpend > 0 && cmSpeTotal > 0) {
+    const diff = cmSpeTotal - avgMonthlySpend;
+    const pctDiff = Math.round((Math.abs(diff) / avgMonthlySpend) * 100);
+    if (diff > 0 && pctDiff >= 15) {
+      smartInsights.push({ icon:"📈", tone:"warn", text:`You spent ${fmt(diff)} more than your monthly average (${pctDiff}% higher).` });
+    } else if (diff < 0 && pctDiff >= 15) {
+      smartInsights.push({ icon:"📉", tone:"good", text:`You spent ${fmt(Math.abs(diff))} less than your monthly average — nice control! (${pctDiff}% lower)` });
+    }
+  }
+
+  // 2. Top category yearly framing
+  if (cmTopCat && cmTopCat[1] > 0) {
+    const yearly = cmTopCat[1] * 12;
+    smartInsights.push({ icon:"🗓️", tone:"neutral", text:`At this rate, ${cmTopCat[0]} costs about ${fmt(yearly)} per year.` });
+  }
+
+  // 3. Category spike vs average for that category (last 3 completed months)
+  if (cmTopCat) {
+    const cat = cmTopCat[0];
+    const past = completedMonthsForAvg.slice(0,3).map(m =>
+      spendings.filter(e => mkey(e.date)===m.mk && (e.type||"Other")===cat).reduce((s,e)=>s+e.amount,0)
+    );
+    const catAvg = past.length ? Math.round(past.reduce((s,v)=>s+v,0)/past.length) : 0;
+    if (catAvg > 0 && cmTopCat[1] > catAvg) {
+      const up = Math.round(((cmTopCat[1]-catAvg)/catAvg)*100);
+      if (up >= 30) smartInsights.push({ icon:"🍔", tone:"warn", text:`${cat} spending is up ${up}% vs your usual ${fmt(catAvg)}/month.` });
+    }
+  }
+
+  // 4. Savings opportunity (yearly) — if savings rate is low
+  if (cmIncTotal > 0 && cmSpeTotal > 0 && (cmIncTotal - cmSpeTotal) / cmIncTotal < 0.2) {
+    const target = cmIncTotal * 0.2;
+    const cut = cmSpeTotal - (cmIncTotal - target);
+    if (cut > 0) {
+      smartInsights.push({ icon:"💰", tone:"neutral", text:`Spend ${fmt(cut)} less this month to save 20% — that's ${fmt(cut*12)} a year.` });
+    }
+  }
+
+  // 5. Positive streak / good month
+  if (cmIncTotal > 0 && (cmIncTotal - cmSpeTotal) / cmIncTotal >= 0.3) {
+    const saved = cmIncTotal - cmSpeTotal;
+    smartInsights.push({ icon:"🎉", tone:"good", text:`You saved ${fmt(saved)} this month. Keep this up and that's ${fmt(saved*12)} this year!` });
+  }
+
+  const insightColor = (tone) => tone==="good" ? "#34D399" : tone==="warn" ? "#FB923C" : "#60A5FA";
+
   const streak = computeStreak(investments, spendings);
   const health = computeHealthScore({ totalIncome, totalSpent, investments, streak });
   const scoreColor = health.total >= 71 ? "#34D399" : health.total >= 41 ? "#FBBF24" : "#F87171";
@@ -829,6 +884,25 @@ export default function Balance({ firestoreData }) {
           ))}
           <p style={{color:"#4B5563",fontSize:"10px",marginTop:"4px"}}>Compared with {mlabel(pm)}.</p>
         </div>
+
+        {/* ✨ NEW v1.8: Smart Insights */}
+        {smartInsights.length > 0 && (
+          <div className="p-5 mb-4" style={{...card}}>
+            <p className="text-sm font-bold mb-3" style={{color:"#E5E7EB"}}>🧠 Smart Insights</p>
+            <div className="space-y-2">
+              {smartInsights.map((ins,i)=>(
+                <div key={i} className="flex items-start gap-3" style={{
+                  padding:"10px 12px",borderRadius:"10px",
+                  background:`${insightColor(ins.tone)}0D`,
+                  border:`1px solid ${insightColor(ins.tone)}25`,
+                }}>
+                  <span style={{fontSize:"16px",lineHeight:1.3}}>{ins.icon}</span>
+                  <p style={{color:"#E5E7EB",fontSize:"12px",lineHeight:1.5,flex:1}}>{ins.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="p-5 mb-4" style={{...card,border:"1px solid rgba(52,211,153,0.12)"}}>
           <p className="text-sm font-bold mb-3" style={{color:"#E5E7EB"}}>💡 Suggestions</p>
