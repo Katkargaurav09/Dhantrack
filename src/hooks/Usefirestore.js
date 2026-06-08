@@ -15,7 +15,7 @@ export const CRYPTO_COINS = [
   { id: "binancecoin",  symbol: "BNB",  name: "BNB" },
   { id: "cardano",      symbol: "ADA",  name: "Cardano" },
   { id: "dogecoin",     symbol: "DOGE", name: "Dogecoin" },
-  { id: "matic-network",symbol: "POL",  name: "Polygon" },
+  { id: "polygon-ecosystem-token", symbol: "POL", name: "Polygon" },
   { id: "polkadot",     symbol: "DOT",  name: "Polkadot" },
   { id: "avalanche-2",  symbol: "AVAX", name: "Avalanche" },
   { id: "chainlink",    symbol: "LINK", name: "Chainlink" },
