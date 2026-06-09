@@ -121,7 +121,7 @@ function computeStreak(investments, spendings) {
   return streak;
 }
 
-function computeHealthScore({ totalIncome, totalSpent, investments, streak }) {
+function computeHealthScore({ totalIncome, totalSpent, investments, streak, monthlySubsTotal = 0 }) {
   let savingsPts = 0;
   let savingsRate = null;
   if (totalIncome > 0) {
@@ -136,7 +136,11 @@ function computeHealthScore({ totalIncome, totalSpent, investments, streak }) {
   }
   const investPts = Math.max(0, Math.min(1, investments.length / 10)) * 30;
   const consistencyPts = Math.max(0, Math.min(1, streak / 14)) * 20;
-  const subsPts = 15;
+  // ✨ v1.9: real Subscriptions score — full 15 pts if under ₹2,000/mo, scaling down to 0 at ₹6,000/mo
+  let subsPts;
+  if (monthlySubsTotal <= 2000) subsPts = 15;
+  else if (monthlySubsTotal >= 6000) subsPts = 0;
+  else subsPts = 15 * (1 - (monthlySubsTotal - 2000) / 4000); // linear between 2k and 6k
 
   const rate = (pts, max) => {
     const r = pts / max;
@@ -150,7 +154,7 @@ function computeHealthScore({ totalIncome, totalSpent, investments, streak }) {
     { label: "Savings Rate",  pts: Math.round(savingsPts),     max: 35, tip: "Save 20%+ of your income for full points." },
     { label: "Investing",     pts: Math.round(investPts),      max: 30, tip: "Invest regularly — 10+ entries unlocks full points." },
     { label: "Consistency",   pts: Math.round(consistencyPts), max: 20, tip: "Track daily — a 14-day streak gives full points." },
-    { label: "Subscriptions", pts: Math.round(subsPts),        max: 15, tip: "Keep autopay under ₹2,000/month." },
+    { label: "Subscriptions", pts: Math.round(subsPts),        max: 15, tip: monthlySubsTotal > 0 ? `You spend ₹${Math.round(monthlySubsTotal).toLocaleString("en-IN")}/month on subscriptions. Keep it under ₹2,000 for full points.` : "Keep autopay under ₹2,000/month." },
   ].map(c => ({ ...c, rating: rate(c.pts, c.max) }));
 
   const total = Math.max(0, Math.min(100, components.reduce((s, c) => s + c.pts, 0)));
@@ -165,6 +169,9 @@ function computeHealthScore({ totalIncome, totalSpent, investments, streak }) {
   if (streak <= 1) reasons.push({ type:"down", text:`Only ${streak}-day tracking streak` });
   else if (streak >= 14) reasons.push({ type:"up", text:`${streak}-day tracking streak — excellent consistency` });
   else reasons.push({ type:"neutral", text:`${streak}-day tracking streak` });
+
+  if (monthlySubsTotal > 4000) reasons.push({ type:"down", text:`High subscription spend (₹${Math.round(monthlySubsTotal).toLocaleString("en-IN")}/mo)` });
+  else if (monthlySubsTotal > 0 && monthlySubsTotal <= 2000) reasons.push({ type:"up", text:"Subscription spending is well controlled" });
 
   const positives = [];
   components.forEach(c => {
@@ -369,7 +376,7 @@ export default function Balance({ firestoreData }) {
   const [reportSharing,setReportSharing]=useState(false);
   useEffect(() => { setTimeout(() => setVis(true), 40); }, []);
 
-  const { investments=[], spendings=[], incomes=[], categories=[], scoreHistory=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, loading=false, saveMonthScore } = firestoreData || {};
+  const { investments=[], spendings=[], incomes=[], categories=[], scoreHistory=[], totalInvested=0, totalSpent=0, totalIncome=0, netBalance=0, monthlySubsTotal=0, loading=false, saveMonthScore } = firestoreData || {};
 
   const isPos = netBalance >= 0;
   const pct   = totalInvested + totalSpent > 0 ? Math.round(totalInvested / (totalInvested + totalSpent) * 100) : 50;
@@ -536,7 +543,7 @@ export default function Balance({ firestoreData }) {
   const insightColor = (tone) => tone==="good" ? "#34D399" : tone==="warn" ? "#FB923C" : "#60A5FA";
 
   const streak = computeStreak(investments, spendings);
-  const health = computeHealthScore({ totalIncome, totalSpent, investments, streak });
+  const health = computeHealthScore({ totalIncome, totalSpent, investments, streak, monthlySubsTotal });
   const scoreColor = health.total >= 71 ? "#34D399" : health.total >= 41 ? "#FBBF24" : "#F87171";
   const scoreLabel = health.total >= 71 ? "Good" : health.total >= 41 ? "Fair" : "Needs Work";
 
@@ -588,7 +595,7 @@ export default function Balance({ firestoreData }) {
   }
 
   // ✨ action target context
-  const targetCtx = { totalIncome, totalSpent, investCount: investments.length, streak };
+  const targetCtx = { totalIncome, totalSpent, investCount: investments.length, streak, monthlySubsTotal };
 
   async function handleExport() {
     setExporting(true); setExportMsg("");

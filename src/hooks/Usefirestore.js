@@ -39,6 +39,7 @@ export default function useFirestore(uid) {
   const [cryptoPrices,     setCryptoPrices]     = useState({});     // ✨ NEW v1.9 { coinId: priceINR }
   const [pricesUpdatedAt,  setPricesUpdatedAt]  = useState(null);   // ✨ NEW v1.9
   const [pricesLoading,    setPricesLoading]    = useState(false);  // ✨ NEW v1.9
+  const [autopay,          setAutopay]          = useState([]);     // ✨ NEW v1.9 subscriptions
   const [loading,          setLoading]          = useState(true);
 
   // ─── Investments listener ───
@@ -137,6 +138,17 @@ export default function useFirestore(uid) {
       collection(db, "users", uid, "pools"),
       snap => setPools(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       err  => console.error("Pools error:", err.message)
+    );
+    return () => unsub();
+  }, [uid]);
+
+  // ✨ NEW v1.9: Autopay/subscriptions listener (for Health Score)
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = onSnapshot(
+      collection(db, "users", uid, "autopay"),
+      snap => setAutopay(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err  => console.error("Autopay error:", err.message)
     );
     return () => unsub();
   }, [uid]);
@@ -272,6 +284,11 @@ export default function useFirestore(uid) {
   const hasIncome  = totalIncome > 0;
   const netBalance = hasIncome ? (totalIncome - totalSpent) : (totalInvested - totalSpent);
 
+  // ✨ NEW v1.9: Active monthly subscription total (for Health Score)
+  const monthlySubsTotal = autopay
+    .filter(s => s.active !== false)
+    .reduce((s, sub) => s + (Number(sub.amount) || 0), 0);
+
   return {
     investments,
     spendings,
@@ -281,6 +298,8 @@ export default function useFirestore(uid) {
     learnedCategories,         // ✨ NEW v1.5
     scoreHistory,              // ✨ NEW v1.7
     pools,
+    autopay,                   // ✨ NEW v1.9 subscriptions list
+    monthlySubsTotal,          // ✨ NEW v1.9 active subs total per month
     cryptoPrices,              // ✨ NEW v1.9 { coinId: priceINR }
     pricesUpdatedAt,           // ✨ NEW v1.9
     pricesLoading,             // ✨ NEW v1.9

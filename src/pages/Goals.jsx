@@ -16,6 +16,40 @@ function daysBetween(d1, d2) {
   return Math.ceil((new Date(d2) - new Date(d1)) / 86400000);
 }
 
+// ✨ NEW: savings goal status from target date + progress
+function goalStatus(goal) {
+  const saved  = Number(goal.saved) || 0;
+  const target = Number(goal.target) || 0;
+  const pct = target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : 0;
+  const done = pct >= 100;
+  const remaining = Math.max(0, target - saved);
+
+  if (done) return { pct, done, remaining, hasDate:false, label:"Achieved", color:"#FBBF24" };
+  if (!goal.deadline) return { pct, done, remaining, hasDate:false, label:null, color:"#34D399" };
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const end   = new Date(goal.deadline); end.setHours(0,0,0,0);
+  const daysLeft = Math.ceil((end - today) / 86400000);
+
+  if (daysLeft <= 0) {
+    return { pct, done, remaining, hasDate:true, daysLeft:0, perDay:0, perMonth:0,
+             label:"Date passed", color:"#F87171", overdue:true };
+  }
+
+  const perDay   = remaining / daysLeft;
+  const perMonth = perDay * 30;
+
+  // are they on track? expected progress by now vs actual
+  // simple check: required daily pace is reasonable if remaining/daysLeft isn't huge vs target
+  const monthsLeft = daysLeft / 30;
+  let label = "On Track", color = "#34D399";
+  // If they'd need to save more than 60% of target in remaining time and time is short -> behind
+  if (monthsLeft < 1 && remaining > target * 0.5) { label = "Way Behind"; color = "#F87171"; }
+  else if (perMonth > 0 && remaining > target * 0.8 && monthsLeft < 3) { label = "Behind"; color = "#FB923C"; }
+
+  return { pct, done, remaining, hasDate:true, daysLeft, perDay, perMonth, label, color };
+}
+
 const CATS = ["Food","Travel","Shopping","Entertainment","Course","Electronics","Health","Utilities","Rent","Fuel","Other"];
 const CAT_ICONS = {Food:"🍔",Travel:"✈️",Shopping:"🛍️",Entertainment:"🎬",Course:"📚",Electronics:"💻",Health:"💊",Utilities:"⚡",Rent:"🏠",Fuel:"⛽",Other:"💡"};
 
@@ -70,18 +104,44 @@ function AddBudgetPanel({ open, onClose, onSave }) {
 }
 
 // ── Add Savings Panel ──────────────────────────────────────────
+// ── Add Savings Panel (full build: templates + target date) ──────
 function AddSavingsPanel({ open, onClose, onSave }) {
+  const SUGGESTED = [
+    { name:"Emergency Fund", emoji:"🛡️", target:"" },
+    { name:"Goa Trip",       emoji:"🌴", target:"30000" },
+    { name:"New iPhone",     emoji:"📱", target:"80000" },
+    { name:"New Laptop",     emoji:"💻", target:"60000" },
+    { name:"Bike / Car",     emoji:"🚗", target:"" },
+    { name:"Wedding",        emoji:"💍", target:"" },
+  ];
+  const EMOJIS = ["🎯","📱","✈️","🏠","🚗","💻","📚","👟","💍","🎸","🏋️","🌴","🛡️","🎓","💸","🐶","🎮","💰"];
   const [name,   setName]   = useState("");
   const [target, setTarget] = useState("");
   const [saved,  setSaved]  = useState("");
   const [emoji,  setEmoji]  = useState("🎯");
+  const [deadline, setDeadline] = useState(""); // ✨ NEW target date
   const [saving, setSaving] = useState(false);
-  const EMOJIS = ["🎯","📱","✈️","🏠","🚗","💻","📚","👟","💍","🎸","🏋️","🌴"];
-  useEffect(() => { if (open) { setName(""); setTarget(""); setSaved(""); setEmoji("🎯"); } }, [open]);
+
+  useEffect(() => { if (open) { setName(""); setTarget(""); setSaved(""); setEmoji("🎯"); setDeadline(""); } }, [open]);
+
+  function applyTemplate(t) {
+    setName(t.name); setEmoji(t.emoji);
+    if (t.target) setTarget(t.target);
+  }
+
   async function save() {
-    if (!name.trim() || !target) return alert("Fill all fields");
+    if (!name.trim() || !target) return alert("Fill goal name and target amount");
     setSaving(true);
-    try { await onSave({ name:name.trim(), target:parseFloat(target), saved:parseFloat(saved)||0, emoji }); onClose(); }
+    try {
+      await onSave({
+        name: name.trim(),
+        target: parseFloat(target),
+        saved: parseFloat(saved) || 0,
+        emoji,
+        deadline: deadline || null,   // ✨ optional target date
+      });
+      onClose();
+    }
     catch (e) { alert("Failed: " + e.message); }
     setSaving(false);
   }
@@ -89,7 +149,7 @@ function AddSavingsPanel({ open, onClose, onSave }) {
     <>
       {open && <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose}/>}
       <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl transition-transform duration-300 ${open?"translate-y-0":"translate-y-full"}`}
-        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"85vh",overflowY:"auto"}}>
+        style={{background:"linear-gradient(145deg,#1A2333,#0F172A)",borderTop:"1px solid rgba(255,255,255,0.08)",maxHeight:"88vh",overflowY:"auto"}}>
         <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{background:"rgba(255,255,255,0.2)"}}/>
         <div className="flex items-center gap-3 px-5 pb-3" style={{borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
           <button onClick={onClose} style={{color:"#6B7280",background:"none",border:"none",cursor:"pointer",fontSize:"18px"}}>←</button>
@@ -97,6 +157,22 @@ function AddSavingsPanel({ open, onClose, onSave }) {
           <span className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold" style={{background:"rgba(52,211,153,0.15)",color:"#34D399",border:"1px solid rgba(52,211,153,0.2)"}}>Goal</span>
         </div>
         <div className="px-5 pt-4 pb-4 space-y-3">
+          {/* ✨ Suggested templates */}
+          <div>
+            <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Quick start (optional)</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>
+              {SUGGESTED.map(t=>(
+                <button key={t.name} onClick={()=>applyTemplate(t)}
+                  style={{padding:"7px 10px",borderRadius:"10px",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",
+                    background: name===t.name ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.04)",
+                    border: name===t.name ? "1px solid rgba(52,211,153,0.4)" : "1px solid rgba(255,255,255,0.08)",
+                    color: name===t.name ? "#34D399" : "#9CA3AF"}}>
+                  {t.emoji} {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div>
             <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Pick Icon</label>
             <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
@@ -112,6 +188,11 @@ function AddSavingsPanel({ open, onClose, onSave }) {
           <div>
             <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Target Amount (₹)</label>
             <input type="number" value={target} onChange={e=>setTarget(e.target.value)} placeholder="e.g. 50000" style={inp}/>
+          </div>
+          <div>
+            <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Target Date — optional</label>
+            <input type="date" value={deadline} onChange={e=>setDeadline(e.target.value)} min={new Date().toISOString().split("T")[0]} style={inp}/>
+            <p style={{color:"#4B5563",fontSize:"11px",marginTop:"5px",lineHeight:1.4}}>Add a date to see how much to save per day/month.</p>
           </div>
           <div>
             <label style={{display:"block",color:"#6B7280",fontSize:"11px",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"7px"}}>Already Saved (₹) — optional</label>
